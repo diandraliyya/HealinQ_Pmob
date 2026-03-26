@@ -19,8 +19,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _confirmPasswordCtrl = TextEditingController();
   bool _isLoading = false;
 
-  static const Color _baseColor = Color(0xFFD4EFFC);
-  static const Color _titleColor = Color(0xFF4AA7A2);
+  static const Color _baseColor = AppColors.bgGradientStart;
+  static const Color _titleColor = AppColors.brandTeal;
 
   @override
   void dispose() {
@@ -104,7 +104,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 style: GoogleFonts.poppins(
                                   fontSize: 28,
                                   fontWeight: FontWeight.w800,
-                                  color: const Color.fromARGB(255, 12, 114, 166),
+                                  color: AppColors.brandBlue,
                                 ),
                               ),
                             ),
@@ -194,8 +194,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(30),
                                   ),
-                                  side: BorderSide(
-                                    color: Colors.grey.shade300,
+                                  side: const BorderSide(
+                                    color: AppColors.surfaceBorder,
                                   ),
                                 ),
                               ),
@@ -206,7 +206,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               child: ElevatedButton(
                                 onPressed: _isLoading ? null : _signUp,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF4AA7A2),
+                                  backgroundColor: AppColors.brandTeal,
                                   foregroundColor: AppColors.white,
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 16,
@@ -253,7 +253,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                       TextSpan(
                                         text: 'Sign In',
                                         style: GoogleFonts.poppins(
-                                          color: const Color(0xFF4AA7A2),
+                                          color: AppColors.brandTeal,
                                           fontWeight: FontWeight.w600,
                                           decoration: TextDecoration.underline,
                                         ),
@@ -305,21 +305,21 @@ class _SignupBackground extends StatelessWidget {
           alignment: Alignment.topLeft,
           widthFactor: 0.78,
           heightFactor: 0.28,
-          color: Color(0xFFFFE5F4),
+          color: AppColors.blobPink,
           opacity: 0.95,
         ),
         _SignupGradientBlob(
           alignment: Alignment.topRight,
           widthFactor: 0.82,
           heightFactor: 0.30,
-          color: Color(0xFF53BAB3),
+          color: AppColors.blobTeal,
           opacity: 0.34,
         ),
         _SignupGradientBlob(
           alignment: Alignment.centerLeft,
           widthFactor: 1.02,
           heightFactor: 0.52,
-          color: Color(0xFF9BDAF8),
+          color: AppColors.blobBlue,
           opacity: 0.28,
         ),
       ],

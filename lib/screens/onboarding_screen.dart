@@ -15,9 +15,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  static const Color _welcomeBaseColor = Color(0xFFD4EFFC);
-  static const Color _welcomeTitleColor = Color(0xFF4AA7A2);
-  static const Color _welcomeSubtitleColor = Color(0xFF4AA7A2);
+  static const Color _welcomeBaseColor = AppColors.bgGradientStart;
+  static const Color _welcomeTitleColor = AppColors.brandTeal;
+  static const Color _welcomeSubtitleColor = AppColors.brandTeal;
 
   @override
   void dispose() {
@@ -55,18 +55,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                if (_currentPage == 0)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 40),
-                    child: Text(
-                      'Geser ke kiri untuk lanjut →',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        color: AppColors.textMedium,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -81,7 +69,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFE0F7FA), Color(0xFFFCE4EC)],
+          colors: [AppColors.secondaryLight, AppColors.primarySoft],
         ),
       ),
       child: SafeArea(
@@ -92,16 +80,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(height: 20),
               Column(
                 children: [
-                  _buildLogoIcon(size: 80),
+                  _buildLogoIcon(size: 180),
                   const SizedBox(height: 8),
-                  Text(
-                    'HealinQ',
-                    style: GoogleFonts.poppins(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF2E7D5F),
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 24),
@@ -170,7 +150,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   style: GoogleFonts.poppins(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    color: const Color(0xFF2E7D5F),
+                    color: AppColors.brandGreen,
                   ),
                 ),
               ],
@@ -256,28 +236,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     fontSize: 12,
                     color: AppColors.textMedium,
                     height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () {},
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'See More',
-                      style: GoogleFonts.poppins(
-                        color: AppColors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
                   ),
                 ),
               ],
@@ -448,7 +406,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               ),
                               style: ElevatedButton.styleFrom(
                                 elevation: 0,
-                                backgroundColor: const Color(0xFF4AA7A2),
+                                backgroundColor: AppColors.brandTeal,
                                 foregroundColor: AppColors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(30),
@@ -477,7 +435,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               ),
                               style: ElevatedButton.styleFrom(
                                 elevation: 0,
-                                backgroundColor: const Color(0xFF4AA7A2),
+                                backgroundColor: AppColors.brandTeal,
                                 foregroundColor: AppColors.white,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(30),
@@ -532,35 +490,35 @@ class _WelcomeBackground extends StatelessWidget {
           alignment: Alignment.topLeft,
           widthFactor: 0.75,
           heightFactor: 0.26,
-          color: Color(0xFFFFE5F4),
+          color: AppColors.blobPink,
           opacity: 0.95,
         ),
         _WelcomeGradientBlob(
           alignment: Alignment.topRight,
           widthFactor: 0.8,
           heightFactor: 0.3,
-          color: Color(0xFF53BAB3),
+          color: AppColors.blobTeal,
           opacity: 0.36,
         ),
         _WelcomeGradientBlob(
           alignment: Alignment.centerLeft,
           widthFactor: 1.0,
           heightFactor: 0.58,
-          color: Color(0xFF9BDAF8),
+          color: AppColors.blobBlue,
           opacity: 0.30,
         ),
         _WelcomeGradientBlob(
           alignment: Alignment.bottomLeft,
           widthFactor: 0.85,
           heightFactor: 0.28,
-          color: Color(0xFF53BAB3),
+          color: AppColors.blobTeal,
           opacity: 0.18,
         ),
         _WelcomeGradientBlob(
           alignment: Alignment.bottomRight,
           widthFactor: 0.65,
           heightFactor: 0.22,
-          color: Color(0xFFFFE5F4),
+          color: AppColors.blobPink,
           opacity: 0.34,
         ),
       ],

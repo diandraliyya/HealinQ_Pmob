@@ -1,5 +1,25 @@
 import '../models/models.dart';
 
+class HomeConsultationHistoryItem {
+  final String bookingCode;
+  final CounselorModel counselor;
+  final DateTime scheduledAt;
+  final String type;
+  final String consultationPreview;
+  final bool isVerified;
+
+  const HomeConsultationHistoryItem({
+    required this.bookingCode,
+    required this.counselor,
+    required this.scheduledAt,
+    required this.type,
+    required this.consultationPreview,
+    this.isVerified = true,
+  });
+
+  bool get isOffline => type.toLowerCase() == 'offline';
+}
+
 class AppData {
   // Mock Counselors
   static List<CounselorModel> counselors = [
@@ -100,6 +120,59 @@ class AppData {
       priceOffline: 210000,
       isVerified: true,
       isAvailable: false,
+    ),
+  ];
+
+  // Mock Consultation History for Home
+  static List<HomeConsultationHistoryItem> consultationHistories = [
+    HomeConsultationHistoryItem(
+      bookingCode: '177.451.688.482.',
+      counselor: counselors[0],
+      scheduledAt: DateTime(2026, 3, 27, 10, 0),
+      type: 'Offline',
+      consultationPreview: 'halo',
+    ),
+    HomeConsultationHistoryItem(
+      bookingCode: '155.882.104.673.',
+      counselor: counselors[1],
+      scheduledAt: DateTime(2026, 3, 20, 14, 0),
+      type: 'Online',
+      consultationPreview: 'Aku lagi sering overthinking dan susah tidur akhir-akhir ini.',
+    ),
+    HomeConsultationHistoryItem(
+      bookingCode: '144.903.227.518.',
+      counselor: counselors[2],
+      scheduledAt: DateTime(2026, 3, 14, 9, 0),
+      type: 'Offline',
+      consultationPreview: 'Aku merasa cemas kalau harus ketemu banyak orang.',
+    ),
+    HomeConsultationHistoryItem(
+      bookingCode: '132.771.450.298.',
+      counselor: counselors[3],
+      scheduledAt: DateTime(2026, 3, 9, 13, 0),
+      type: 'Online',
+      consultationPreview: 'Aku ingin konsultasi tentang tujuan hidup dan pengembangan diri.',
+    ),
+    HomeConsultationHistoryItem(
+      bookingCode: '128.661.305.117.',
+      counselor: counselors[4],
+      scheduledAt: DateTime(2026, 3, 3, 16, 0),
+      type: 'Offline',
+      consultationPreview: 'Aku masih sering ke-trigger sama kejadian masa lalu.',
+    ),
+    HomeConsultationHistoryItem(
+      bookingCode: '120.540.882.901.',
+      counselor: counselors[5],
+      scheduledAt: DateTime(2026, 2, 24, 11, 0),
+      type: 'Online',
+      consultationPreview: 'Aku mau belajar komunikasi yang lebih sehat dengan pasanganku.',
+    ),
+    HomeConsultationHistoryItem(
+      bookingCode: '118.430.774.665.',
+      counselor: counselors[6],
+      scheduledAt: DateTime(2026, 2, 18, 15, 0),
+      type: 'Offline',
+      consultationPreview: 'Aku ingin konsultasi soal emosi anak dan pola komunikasi di rumah.',
     ),
   ];
 

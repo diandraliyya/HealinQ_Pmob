@@ -24,49 +24,107 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
     final random = Random();
     final item = AppData.jarItems[random.nextInt(AppData.jarItems.length)];
 
+    final popupColors = [
+      const Color(0xFFFCE4EC),
+      const Color(0xFFE0F7FA),
+      const Color(0xFFE8F5E9),
+      const Color(0xFFFFF3E0),
+      const Color(0xFFEDE7F6),
+      const Color(0xFFFFF9C4),
+      const Color(0xFFD7FBE8),
+      const Color(0xFFFFE5F4),
+    ];
+
+    final popupBg = popupColors[random.nextInt(popupColors.length)];
+
     setState(() {
       _jarMessage = item['content'];
     });
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        backgroundColor: AppColors.pinkCard,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('✨', style: TextStyle(fontSize: 32)),
-            const SizedBox(height: 12),
-            Text(
-              _jarMessage ?? '',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                color: AppColors.textDark,
-                height: 1.5,
+      barrierColor: Colors.black.withOpacity(0.35),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Center(
+          child: Container(
+            width: 300,
+            height: 300,
+            decoration: BoxDecoration(
+              color: popupBg,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+              border: Border.all(
+                color: AppColors.white.withOpacity(0.9),
+                width: 4,
               ),
             ),
-          ],
-        ),
-        actions: [
-          Center(
-            child: TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-              },
-              child: Text(
-                'Tutup',
-                style: GoogleFonts.poppins(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w600,
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  '✨',
+                  style: TextStyle(fontSize: 34),
                 ),
-              ),
+                const SizedBox(height: 12),
+                Text(
+                  'Jar of Happiness',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      _jarMessage ?? '',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: AppColors.textDark,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: () => Navigator.pop(ctx),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Text(
+                      'Tutup',
+                      style: GoogleFonts.poppins(
+                        color: AppColors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -189,12 +247,17 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            SizedBox(
-              height: 160,
+            Image.asset(
+              'assets/images/jar.png',
               width: 160,
-              child: CustomPaint(
-                painter: _JarPainter(),
-              ),
+              height: 160,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return const SizedBox(
+                  width: 160,
+                  height: 160,
+                );
+              },
             ),
           ],
         ),
@@ -888,83 +951,4 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
       ),
     );
   }
-}
-
-class _JarPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final jarPaint = Paint()
-      ..color = const Color(0xFFF8BBD9)
-      ..style = PaintingStyle.fill;
-
-    final outline = Paint()
-      ..color = const Color(0xFFE91E8C).withOpacity(0.4)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    final jarPath = Path();
-    jarPath.moveTo(size.width * 0.22, size.height * 0.28);
-    jarPath.lineTo(size.width * 0.08, size.height * 0.92);
-    jarPath.quadraticBezierTo(
-      size.width * 0.5,
-      size.height * 1.05,
-      size.width * 0.92,
-      size.height * 0.92,
-    );
-    jarPath.lineTo(size.width * 0.78, size.height * 0.28);
-    jarPath.close();
-
-    canvas.drawPath(jarPath, jarPaint);
-    canvas.drawPath(jarPath, outline);
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(
-          size.width * 0.15,
-          size.height * 0.18,
-          size.width * 0.7,
-          size.height * 0.12,
-        ),
-        const Radius.circular(6),
-      ),
-      Paint()..color = const Color(0xFFE91E8C),
-    );
-
-    final ballColors = [
-      const Color(0xFF80DEEA),
-      const Color(0xFFE91E8C),
-      const Color(0xFF80CBC4),
-      const Color(0xFFF48FB1),
-      const Color(0xFF4FC3F7),
-      const Color(0xFFE91E8C),
-      const Color(0xFF80DEEA),
-      const Color(0xFF80CBC4),
-      const Color(0xFFF48FB1),
-      const Color(0xFFE91E8C),
-    ];
-
-    final positions = [
-      Offset(size.width * 0.28, size.height * 0.5),
-      Offset(size.width * 0.42, size.height * 0.45),
-      Offset(size.width * 0.57, size.height * 0.48),
-      Offset(size.width * 0.70, size.height * 0.52),
-      Offset(size.width * 0.35, size.height * 0.62),
-      Offset(size.width * 0.5, size.height * 0.65),
-      Offset(size.width * 0.65, size.height * 0.6),
-      Offset(size.width * 0.28, size.height * 0.75),
-      Offset(size.width * 0.45, size.height * 0.78),
-      Offset(size.width * 0.62, size.height * 0.74),
-    ];
-
-    for (int i = 0; i < positions.length && i < ballColors.length; i++) {
-      canvas.drawCircle(
-        positions[i],
-        size.width * 0.1,
-        Paint()..color = ballColors[i],
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
