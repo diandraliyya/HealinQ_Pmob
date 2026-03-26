@@ -35,8 +35,12 @@ class AppButton extends StatelessWidget {
   final Color? color;
 
   const AppButton({
-    super.key, required this.text, required this.onPressed,
-    this.isPrimary = true, this.width, this.color,
+    super.key,
+    required this.text,
+    required this.onPressed,
+    this.isPrimary = true,
+    this.width,
+    this.color,
   });
 
   @override
@@ -51,7 +55,10 @@ class AppButton extends StatelessWidget {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
-        child: Text(text, style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
+        child: Text(
+          text,
+          style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }
@@ -67,8 +74,13 @@ class AppTextField extends StatefulWidget {
   final IconData? prefixIcon;
 
   const AppTextField({
-    super.key, required this.hint, this.isPassword = false,
-    required this.controller, this.validator, this.keyboardType, this.prefixIcon,
+    super.key,
+    required this.hint,
+    this.isPassword = false,
+    required this.controller,
+    this.validator,
+    this.keyboardType,
+    this.prefixIcon,
   });
 
   @override
@@ -88,10 +100,16 @@ class _AppTextFieldState extends State<AppTextField> {
       style: GoogleFonts.poppins(fontSize: 14, color: AppColors.textDark),
       decoration: InputDecoration(
         hintText: widget.hint,
-        prefixIcon: widget.prefixIcon != null ? Icon(widget.prefixIcon, color: AppColors.textLight, size: 20) : null,
+        prefixIcon: widget.prefixIcon != null
+            ? Icon(widget.prefixIcon, color: AppColors.textLight, size: 20)
+            : null,
         suffixIcon: widget.isPassword
             ? IconButton(
-                icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility, color: AppColors.textLight, size: 20),
+                icon: Icon(
+                  _obscure ? Icons.visibility_off : Icons.visibility,
+                  color: AppColors.textLight,
+                  size: 20,
+                ),
                 onPressed: () => setState(() => _obscure = !_obscure),
               )
             : null,
@@ -112,14 +130,27 @@ class ScoreCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white.withOpacity(0.9),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.stars_rounded, color: AppColors.starYellow, size: 18),
           const SizedBox(width: 4),
-          Text('$xp', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textDark)),
+          Text(
+            '$xp',
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: AppColors.textDark,
+            ),
+          ),
         ],
       ),
     );
@@ -131,12 +162,18 @@ class CounselorCard extends StatelessWidget {
   final String name;
   final String specialization;
   final double rating;
-  final VoidCallback onBook;
+  final VoidCallback? onBook;
   final bool compact;
+  final bool showBook;
 
   const CounselorCard({
-    super.key, required this.name, required this.specialization,
-    required this.rating, required this.onBook, this.compact = false,
+    super.key,
+    required this.name,
+    required this.specialization,
+    required this.rating,
+    this.onBook,
+    this.compact = false,
+    this.showBook = true,
   });
 
   @override
@@ -147,40 +184,90 @@ class CounselorCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 2))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          const CircleAvatar(radius: 24, backgroundColor: AppColors.secondaryLight, child: Icon(Icons.person, color: AppColors.teal, size: 28)),
+          const CircleAvatar(
+            radius: 24,
+            backgroundColor: AppColors.secondaryLight,
+            child: Icon(Icons.person, color: AppColors.teal, size: 28),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.textDark), maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(specialization, style: GoogleFonts.poppins(fontSize: 11, color: AppColors.textMedium)),
+                Text(
+                  name,
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: AppColors.textDark,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  specialization,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: AppColors.textMedium,
+                  ),
+                ),
               ],
             ),
           ),
-          Column(
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.star_rounded, color: AppColors.starYellow, size: 16),
-                  Text('$rating', style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600)),
-                ],
-              ),
-              const SizedBox(height: 4),
-              GestureDetector(
-                onTap: onBook,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(color: AppColors.teal, borderRadius: BorderRadius.circular(12)),
-                  child: Text('Book', style: GoogleFonts.poppins(color: AppColors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+          if (showBook)
+            Column(
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.star_rounded, color: AppColors.starYellow, size: 16),
+                    Text(
+                      '$rating',
+                      style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(height: 4),
+                GestureDetector(
+                  onTap: onBook,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.teal,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Book',
+                      style: GoogleFonts.poppins(
+                        color: AppColors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                const Icon(Icons.star_rounded, color: AppColors.starYellow, size: 16),
+                const SizedBox(width: 2),
+                Text(
+                  '$rating',
+                  style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
         ],
       ),
     );
@@ -203,7 +290,10 @@ class PinkWaveDecoration extends StatelessWidget {
 class WavePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = AppColors.primaryLight.withOpacity(0.4)..style = PaintingStyle.fill;
+    final paint = Paint()
+      ..color = AppColors.primaryLight.withOpacity(0.4)
+      ..style = PaintingStyle.fill;
+
     final path = Path();
     path.moveTo(0, size.height * 0.6);
     path.quadraticBezierTo(size.width * 0.25, 0, size.width * 0.5, size.height * 0.4);
@@ -211,6 +301,7 @@ class WavePainter extends CustomPainter {
     path.lineTo(size.width, size.height);
     path.lineTo(0, size.height);
     path.close();
+
     canvas.drawPath(path, paint);
   }
 

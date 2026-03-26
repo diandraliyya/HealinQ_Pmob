@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+
 import '../../theme/app_theme.dart';
 import '../../utils/app_state.dart';
 import '../../utils/app_data.dart';
@@ -20,30 +21,43 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
 
-  final List<Widget> _screens = const [
-    _HomeContent(),
-    KonsultasiScreen(),
-    _ProfileTab(),
-    SelfHealingScreen(),
-    FypScreen(),
-  ];
+  void _changeTab(int index) {
+    setState(() {
+      _navIndex = index;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_navIndex],
+      body: IndexedStack(
+        index: _navIndex,
+        children: [
+          _HomeContent(
+            onNavigateToTab: _changeTab,
+          ),
+          const KonsultasiScreen(),
+          const _ProfileTab(),
+          const SelfHealingScreen(),
+          const FypScreen(),
+        ],
+      ),
       bottomNavigationBar: AppBottomNav(
         currentIndex: _navIndex,
-        onTap: (i) => setState(() => _navIndex = i),
+        onTap: _changeTab,
       ),
     );
   }
 }
 
 class _HomeContent extends StatelessWidget {
-  const _HomeContent();
+  final ValueChanged<int> onNavigateToTab;
 
-  static const Color _baseColor = Color(0xFFD4EFFC);
+  const _HomeContent({
+    required this.onNavigateToTab,
+  });
+
+  static const Color _baseColor = AppColors.bgGradientStart;
 
   @override
   Widget build(BuildContext context) {
@@ -62,10 +76,8 @@ class _HomeContent extends StatelessWidget {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -140,7 +152,7 @@ class _HomeContent extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _buildQuickAccess(context),
+                        _buildQuickAccess(),
                         const SizedBox(height: 20),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -154,23 +166,14 @@ class _HomeContent extends StatelessWidget {
                               ),
                             ),
                             GestureDetector(
-                              onTap: () {},
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.add_circle_outline,
-                                    color: AppColors.primary,
-                                    size: 16,
-                                  ),
-                                  Text(
-                                    ' New',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 13,
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
+                              onTap: () => onNavigateToTab(3),
+                              child: Text(
+                                'View All',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 13,
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ],
@@ -184,29 +187,16 @@ class _HomeContent extends StatelessWidget {
                               ),
                             ),
                         const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Consultation History',
-                              style: GoogleFonts.poppins(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            Text(
-                              'See All',
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          'Consultation History',
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
                         ),
                         const SizedBox(height: 10),
-                        _buildConsultationHistory(),
+                        _buildConsultationHistory(context),
                         const SizedBox(height: 20),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -219,12 +209,15 @@ class _HomeContent extends StatelessWidget {
                                 color: AppColors.primary,
                               ),
                             ),
-                            Text(
-                              'View All',
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w600,
+                            GestureDetector(
+                              onTap: () => onNavigateToTab(1),
+                              child: Text(
+                                'Go to Consultation',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 13,
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ],
@@ -235,7 +228,7 @@ class _HomeContent extends StatelessWidget {
                                 name: c.name,
                                 specialization: c.specialization,
                                 rating: c.rating,
-                                onBook: () {},
+                                showBook: false,
                               ),
                             ),
                         const SizedBox(height: 20),
@@ -295,149 +288,61 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickAccess(BuildContext context) {
-    return Column(
-      children: [
-        _quickCard(
-          'assets/icons/ic_self_healing.png',
-          'Self Healing',
-          'Write your feelings and reflect on your day',
-          AppColors.secondaryLight,
-        ),
-        const SizedBox(height: 12),
-        _quickCard(
-          'assets/icons/ic_konsultasi.png',
-          'Konsultasi',
-          'We will help you here',
-          AppColors.secondaryLight,
-        ),
-        const SizedBox(height: 12),
-        _quickCard(
-          'assets/icons/ic_fyp.png',
-          'Find Your Passion',
-          'Let\'s find your own passion',
-          AppColors.secondaryLight,
-        ),
-        const SizedBox(height: 12),
-        _buildJarCard(),
-      ],
-    );
-  }
-
-  Widget _quickCard(
-    String iconPath,
-    String title,
-    String subtitle,
-    Color bg,
-  ) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Image.asset(
-            iconPath,
-            width: 24,
-            height: 24,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              return const SizedBox(width: 24, height: 24);
-            },
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: const Color.fromARGB(255, 12, 114, 166),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppColors.textMedium,
-                    height: 1.4,
-                  ),
-                ),
-              ],
+  Widget _buildQuickAccess() {
+    return GestureDetector(
+      onTap: () => onNavigateToTab(3),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.pinkCard,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildJarCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFCE4EC),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Image.asset(
-            'assets/images/jar.png',
-            width: 56,
-            height: 56,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              return const SizedBox(width: 56, height: 56);
-            },
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Jar of Happiness',
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Click here!',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppColors.textMedium,
-                  ),
-                ),
-              ],
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Image.asset(
+              'assets/images/jar.png',
+              width: 56,
+              height: 56,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return const SizedBox(width: 56, height: 56);
+              },
             ),
-          ),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Jar of Happiness',
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Click here!',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: AppColors.textMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -463,7 +368,7 @@ class _HomeContent extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color:  const Color.fromARGB(255, 198, 241, 237),
+              color: AppColors.mintCard,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Center(
@@ -497,56 +402,341 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildConsultationHistory() {
-    final dates = [16, 15, 14, 13, 12, 11, 10, 9];
+  Widget _buildConsultationHistory(BuildContext context) {
+    return SizedBox(
+      height: 68,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: AppData.consultationHistories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final item = AppData.consultationHistories[index];
+          final day = DateFormat('d').format(item.scheduledAt);
+          final month = DateFormat('MMM').format(item.scheduledAt);
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-          ),
-        ],
+          return GestureDetector(
+            onTap: () => _showConsultationHistorySheet(context, item),
+            child: Container(
+              width: 72,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.pinkCard,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.primaryLight),
+              ),
+              child: Center(
+                child: Text(
+                  '$day\n$month',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        },
       ),
-      child: SizedBox(
-        height: 70,
-        child: ListView.builder(
-          scrollDirection: Axis.horizontal,
-          itemCount: 2,
-          itemBuilder: (ctx, row) => Row(
-            children: dates
-                .skip(row * 4)
-                .take(4)
-                .map(
-                  (d) => Container(
-                    width: 60,
-                    height: 36,
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.pinkCard,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.primaryLight),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '$d\nMarch',
-                        style: GoogleFonts.poppins(
-                          fontSize: 10,
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        textAlign: TextAlign.center,
+    );
+  }
+
+  void _showConsultationHistorySheet(
+    BuildContext context,
+    HomeConsultationHistoryItem item,
+  ) {
+    final dateStr = DateFormat('EEEE, d MMMM yyyy').format(item.scheduledAt);
+    final endHour = item.scheduledAt.add(const Duration(hours: 1));
+    final timeStr =
+        '${DateFormat('HH.00').format(item.scheduledAt)}-${DateFormat('HH.00').format(endHour)} WIB';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return FractionallySizedBox(
+          heightFactor: 0.78,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Container(
+                  width: 48,
+                  height: 5,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withOpacity(0.12),
+                            blurRadius: 18,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            height: 56,
+                            decoration: const BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.only(
+                                topLeft: Radius.circular(24),
+                                topRight: Radius.circular(24),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              children: [
+                                Row(
+                                  children: [
+                                    const CircleAvatar(
+                                      radius: 28,
+                                      backgroundColor:
+                                          AppColors.secondaryLight,
+                                      child: Icon(
+                                        Icons.person,
+                                        color: AppColors.teal,
+                                        size: 32,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            item.counselor.name,
+                                            style: GoogleFonts.poppins(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 14,
+                                              color: AppColors.textDark,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${item.counselor.specialization} | ${item.type}',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 12,
+                                              color: AppColors.textMedium,
+                                            ),
+                                          ),
+                                          if (item.isVerified) ...[
+                                            const SizedBox(height: 4),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 2,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: AppColors.success
+                                                    .withOpacity(0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(
+                                                    Icons
+                                                        .check_circle_rounded,
+                                                    color: AppColors.success,
+                                                    size: 14,
+                                                  ),
+                                                  Text(
+                                                    ' Verified',
+                                                    style: GoogleFonts.poppins(
+                                                      fontSize: 11,
+                                                      color:
+                                                          AppColors.success,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                const Divider(color: Color(0xFFFFB6C1)),
+                                const SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _infoBox(
+                                        Icons.calendar_today_rounded,
+                                        'Tanggal',
+                                        dateStr,
+                                        AppColors.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _infoBox(
+                                        Icons.access_time_rounded,
+                                        'Time Session',
+                                        timeStr,
+                                        AppColors.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                _fullInfoBox(
+                                  Icons.confirmation_number_rounded,
+                                  'Booking Code',
+                                  item.bookingCode,
+                                ),
+                                const SizedBox(height: 8),
+                                if (item.isOffline)
+                                  _fullInfoBox(
+                                    Icons.location_on_rounded,
+                                    'Location',
+                                    item.counselor.location,
+                                  ),
+                                if (item.isOffline) const SizedBox(height: 8),
+                                _fullInfoBox(
+                                  Icons.chat_bubble_outline_rounded,
+                                  'Consultation Preview',
+                                  item.consultationPreview,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 12),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 20,
+                                  height: 20,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.bgGradientStart,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const Expanded(
+                                  child: _DashedDivider(),
+                                ),
+                                Container(
+                                  width: 20,
+                                  height: 20,
+                                  decoration: const BoxDecoration(
+                                    color: AppColors.primarySoft,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                       ),
                     ),
                   ),
-                )
-                .toList(),
+                ),
+              ],
+            ),
           ),
-        ),
+        );
+      },
+    );
+  }
+
+  Widget _infoBox(IconData icon, String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: AppColors.textMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fullInfoBox(IconData icon, String label, String value) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: AppColors.primary, size: 14),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: AppColors.textMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primary,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -648,7 +838,8 @@ class _HomeContent extends StatelessWidget {
               value: progress,
               minHeight: 8,
               backgroundColor: Colors.grey.shade200,
-              valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+              valueColor:
+                  const AlwaysStoppedAnimation(AppColors.primary),
             ),
           ),
           const SizedBox(height: 6),
@@ -688,10 +879,46 @@ class _HomeContent extends StatelessWidget {
   }
 }
 
+class _DashedDivider extends StatelessWidget {
+  const _DashedDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: const Size(double.infinity, 1),
+      painter: _DashedLinePainter(),
+    );
+  }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const dashWidth = 8.0;
+    const dashSpace = 6.0;
+    final paint = Paint()
+      ..color = const Color(0xFFFFB6C1)
+      ..strokeWidth = 1.5;
+
+    double startX = 0;
+    while (startX < size.width) {
+      canvas.drawLine(
+        Offset(startX, size.height / 2),
+        Offset(startX + dashWidth, size.height / 2),
+        paint,
+      );
+      startX += dashWidth + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class _ProfileTab extends StatelessWidget {
   const _ProfileTab();
 
-  static const Color _baseColor = Color(0xFFD4EFFC);
+  static const Color _baseColor = AppColors.bgGradientStart;
 
   @override
   Widget build(BuildContext context) {
@@ -937,28 +1164,28 @@ class _SoftPageBackground extends StatelessWidget {
           alignment: Alignment.topLeft,
           widthFactor: 0.76,
           heightFactor: 0.25,
-          color: Color(0xFFFFE5F4),
+          color: AppColors.blobPink,
           opacity: 0.95,
         ),
         _BackgroundBlob(
           alignment: Alignment.topRight,
           widthFactor: 0.82,
           heightFactor: 0.30,
-          color: Color(0xFF53BAB3),
+          color: AppColors.blobTeal,
           opacity: 0.34,
         ),
         _BackgroundBlob(
           alignment: Alignment.centerLeft,
           widthFactor: 1.02,
           heightFactor: 0.56,
-          color: Color(0xFF9BDAF8),
+          color: AppColors.blobBlue,
           opacity: 0.28,
         ),
         _BackgroundBlob(
           alignment: Alignment.bottomRight,
           widthFactor: 0.60,
           heightFactor: 0.22,
-          color: Color(0xFFFFE5F4),
+          color: AppColors.blobPink,
           opacity: 0.30,
         ),
       ],

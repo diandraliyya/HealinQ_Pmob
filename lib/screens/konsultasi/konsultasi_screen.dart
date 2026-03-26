@@ -15,7 +15,7 @@ class KonsultasiScreen extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFB2EBF2), Color(0xFFFCE4EC)],
+          colors: [AppColors.bgGradientStart, AppColors.primarySoft],
         ),
       ),
       child: SafeArea(
@@ -52,7 +52,7 @@ class KonsultasiScreen extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 8),
                           decoration: BoxDecoration(
-                              color: AppColors.teal,
+                              color: AppColors.brandTeal,
                               borderRadius: BorderRadius.circular(20)),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
                             const Icon(Icons.message_rounded,
@@ -67,7 +67,6 @@ class KonsultasiScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 5),
-                    // Illustration
                     _buildEnvelopeIllustration(),
                     const SizedBox(height: 5),
                     Text('Need Someone to Talk?',
@@ -81,7 +80,6 @@ class KonsultasiScreen extends StatelessWidget {
                             color: AppColors.textMedium,
                             fontStyle: FontStyle.italic)),
                     const SizedBox(height: 26),
-                    // Cards
                     Row(
                       children: [
                         Expanded(

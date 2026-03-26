@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../theme/app_theme.dart';
 import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -16,9 +17,9 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _fadeAnim;
   late final Animation<double> _scaleAnim;
 
-  static const Color _baseColor = Color(0xFFD4EFFC);
-  static const Color _titleColor = Color(0xFF4AA7A2);
-  static const Color _subtitleColor = Color(0xFF4AA7A2);
+  static const Color _baseColor = AppColors.bgGradientStart;
+  static const Color _titleColor = AppColors.brandTeal;
+  static const Color _subtitleColor = AppColors.brandTeal;
 
   @override
   void initState() {
@@ -140,35 +141,35 @@ class _SplashBackground extends StatelessWidget {
           alignment: Alignment.topLeft,
           widthFactor: 0.72,
           heightFactor: 0.28,
-          color: Color(0xFFFFE5F4),
+          color: AppColors.blobPink,
           opacity: 0.95,
         ),
         _GradientBlob(
           alignment: Alignment.topRight,
           widthFactor: 0.78,
           heightFactor: 0.34,
-          color: Color(0xFF53BAB3),
+          color: AppColors.blobTeal,
           opacity: 0.38,
         ),
         _GradientBlob(
           alignment: Alignment.centerLeft,
           widthFactor: 0.92,
           heightFactor: 0.62,
-          color: Color(0xFF9BDAF8),
+          color: AppColors.blobBlue,
           opacity: 0.36,
         ),
         _GradientBlob(
           alignment: Alignment.bottomLeft,
           widthFactor: 1.05,
           heightFactor: 0.34,
-          color: Color(0xFF53BAB3),
+          color: AppColors.blobTeal,
           opacity: 0.22,
         ),
         _GradientBlob(
           alignment: Alignment.bottomRight,
           widthFactor: 0.55,
           heightFactor: 0.2,
-          color: Color(0xFFFFE5F4),
+          color: AppColors.blobPink,
           opacity: 0.4,
         ),
       ],
