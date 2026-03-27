@@ -23,12 +23,15 @@ class AppState extends ChangeNotifier {
   }
 
   bool login(String emailOrUsername, String password) {
-    // Mock login - accept any non-empty credentials
     if (emailOrUsername.isNotEmpty && password.isNotEmpty) {
       _currentUser = UserModel(
-        username: emailOrUsername.contains('@') ? emailOrUsername.split('@')[0] : emailOrUsername,
+        username: emailOrUsername.contains('@')
+            ? emailOrUsername.split('@')[0]
+            : emailOrUsername,
         name: 'Buddy',
-        email: emailOrUsername.contains('@') ? emailOrUsername : '$emailOrUsername@healinq.com',
+        email: emailOrUsername.contains('@')
+            ? emailOrUsername
+            : '$emailOrUsername@healinq.com',
         password: password,
         point: 1240,
         level: 8,
@@ -41,19 +44,85 @@ class AppState extends ChangeNotifier {
   }
 
   bool signUp({
-    required String username, required String name, required String email,
-    required String password, String? birthDate, String? lastEdu,
-    String? gender, String? address,
+    required String username,
+    required String name,
+    required String email,
+    required String password,
+    String? birthDate,
+    String? lastEdu,
+    String? gender,
+    String? address,
   }) {
-    if (username.isNotEmpty && name.isNotEmpty && email.isNotEmpty && password.isNotEmpty) {
+    if (username.isNotEmpty &&
+        name.isNotEmpty &&
+        email.isNotEmpty &&
+        password.isNotEmpty) {
       _currentUser = UserModel(
-        username: username, name: name, email: email, password: password,
-        birthDate: birthDate, lastEdu: lastEdu, gender: gender, address: address,
+        username: username,
+        name: name,
+        email: email,
+        password: password,
+        birthDate: birthDate,
+        lastEdu: lastEdu,
+        gender: gender,
+        address: address,
       );
       notifyListeners();
       return true;
     }
     return false;
+  }
+
+  void updateProfile({
+    required String username,
+    required String name,
+    required String email,
+  }) {
+    if (_currentUser == null) return;
+
+    _currentUser = UserModel(
+      username: username,
+      name: name,
+      email: email,
+      password: _currentUser!.password,
+      birthDate: _currentUser!.birthDate,
+      lastEdu: _currentUser!.lastEdu,
+      gender: _currentUser!.gender,
+      address: _currentUser!.address,
+      point: _currentUser!.point,
+      level: _currentUser!.level,
+      streak: _currentUser!.streak,
+    );
+
+    notifyListeners();
+  }
+
+  bool changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) {
+    if (_currentUser == null) return false;
+
+    if (_currentUser!.password != currentPassword) {
+      return false;
+    }
+
+    _currentUser = UserModel(
+      username: _currentUser!.username,
+      name: _currentUser!.name,
+      email: _currentUser!.email,
+      password: newPassword,
+      birthDate: _currentUser!.birthDate,
+      lastEdu: _currentUser!.lastEdu,
+      gender: _currentUser!.gender,
+      address: _currentUser!.address,
+      point: _currentUser!.point,
+      level: _currentUser!.level,
+      streak: _currentUser!.streak,
+    );
+
+    notifyListeners();
+    return true;
   }
 
   void logout() {
@@ -64,12 +133,23 @@ class AppState extends ChangeNotifier {
 
   void addJournal(JournalModel journal) {
     _journals.insert(0, journal);
-    _currentUser = UserModel(
-      username: _currentUser!.username, name: _currentUser!.name,
-      email: _currentUser!.email, password: _currentUser!.password,
-      point: _currentUser!.point + 50, level: _currentUser!.level,
-      streak: _currentUser!.streak,
-    );
+
+    if (_currentUser != null) {
+      _currentUser = UserModel(
+        username: _currentUser!.username,
+        name: _currentUser!.name,
+        email: _currentUser!.email,
+        password: _currentUser!.password,
+        birthDate: _currentUser!.birthDate,
+        lastEdu: _currentUser!.lastEdu,
+        gender: _currentUser!.gender,
+        address: _currentUser!.address,
+        point: _currentUser!.point + 50,
+        level: _currentUser!.level,
+        streak: _currentUser!.streak,
+      );
+    }
+
     notifyListeners();
   }
 
