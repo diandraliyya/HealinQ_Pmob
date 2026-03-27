@@ -418,8 +418,7 @@ class _HomeContent extends StatelessWidget {
             onTap: () => _showConsultationHistorySheet(context, item),
             child: Container(
               width: 72,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.pinkCard,
                 borderRadius: BorderRadius.circular(10),
@@ -508,8 +507,7 @@ class _HomeContent extends StatelessWidget {
                                   children: [
                                     const CircleAvatar(
                                       radius: 28,
-                                      backgroundColor:
-                                          AppColors.secondaryLight,
+                                      backgroundColor: AppColors.secondaryLight,
                                       child: Icon(
                                         Icons.person,
                                         color: AppColors.teal,
@@ -555,8 +553,7 @@ class _HomeContent extends StatelessWidget {
                                                 mainAxisSize: MainAxisSize.min,
                                                 children: [
                                                   const Icon(
-                                                    Icons
-                                                        .check_circle_rounded,
+                                                    Icons.check_circle_rounded,
                                                     color: AppColors.success,
                                                     size: 14,
                                                   ),
@@ -564,8 +561,7 @@ class _HomeContent extends StatelessWidget {
                                                     ' Verified',
                                                     style: GoogleFonts.poppins(
                                                       fontSize: 11,
-                                                      color:
-                                                          AppColors.success,
+                                                      color: AppColors.success,
                                                       fontWeight:
                                                           FontWeight.w600,
                                                     ),
@@ -626,8 +622,7 @@ class _HomeContent extends StatelessWidget {
                             ),
                           ),
                           Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
                             child: Row(
                               children: [
                                 Container(
@@ -838,8 +833,7 @@ class _HomeContent extends StatelessWidget {
               value: progress,
               minHeight: 8,
               backgroundColor: Colors.grey.shade200,
-              valueColor:
-                  const AlwaysStoppedAnimation(AppColors.primary),
+              valueColor: const AlwaysStoppedAnimation(AppColors.primary),
             ),
           ),
           const SizedBox(height: 6),
@@ -923,6 +917,7 @@ class _ProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AppState>().currentUser;
+
     return Container(
       color: _baseColor,
       child: Stack(
@@ -931,69 +926,176 @@ class _ProfileTab extends StatelessWidget {
           const _SoftPageBackground(),
           SafeArea(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 20),
-                  const CircleAvatar(
-                    radius: 50,
-                    backgroundColor: AppColors.primaryLight,
-                    child: Icon(
-                      Icons.person,
-                      size: 60,
+                  Center(
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppColors.primary.withOpacity(0.15),
+                              width: 2,
+                            ),
+                          ),
+                          child: const CircleAvatar(
+                            radius: 48,
+                            backgroundColor: AppColors.primaryLight,
+                            child: Icon(
+                              Icons.person,
+                              size: 58,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          user?.name ?? 'User',
+                          style: GoogleFonts.poppins(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '@${user?.username ?? 'username'}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: AppColors.textMedium,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          user?.email ?? 'user@email.com',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.white.withOpacity(0.85),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            'Joined since 2026',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.white.withOpacity(0.88),
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _statCard(
+                            'Level',
+                            '${user?.level ?? 1}',
+                            AppColors.teal,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _statCard(
+                            'XP',
+                            '${user?.point ?? 0}',
+                            AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _statCard(
+                            'Streak',
+                            '${user?.streak ?? 0}',
+                            AppColors.accent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  Text(
+                    'Account',
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
                       color: AppColors.primary,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    user?.name ?? 'User',
-                    style: GoogleFonts.poppins(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDark,
-                    ),
+                  const SizedBox(height: 12),
+                  _profileMenuCard(
+                    context,
+                    icon: Icons.edit_rounded,
+                    title: 'Edit Profile',
+                    subtitle: 'Change your name, username, and email',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const _EditProfileScreen(),
+                        ),
+                      );
+                    },
                   ),
-                  Text(
-                    '@${user?.username ?? ''}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: AppColors.textMedium,
-                    ),
+                  const SizedBox(height: 10),
+                  _profileMenuCard(
+                    context,
+                    icon: Icons.settings_rounded,
+                    title: 'Settings',
+                    subtitle: 'Notifications and password',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const _SettingsScreen(),
+                        ),
+                      );
+                    },
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    user?.email ?? '',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: AppColors.textLight,
-                    ),
+                  const SizedBox(height: 10),
+                  _profileMenuCard(
+                    context,
+                    icon: Icons.info_outline_rounded,
+                    title: 'About App',
+                    subtitle: 'Learn more about HealinQ',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const _AboutAppScreen(),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _statCard('Level', '${user?.level ?? 1}', AppColors.teal),
-                      _statCard('XP', '${user?.point ?? 0}', AppColors.primary),
-                      _statCard(
-                        'Streak',
-                        '${user?.streak ?? 0} 🔥',
-                        AppColors.accent,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  _profileMenuItem(Icons.edit_rounded, 'Edit Profile', () {}),
-                  _profileMenuItem(
-                    Icons.history_rounded,
-                    'Consultation History',
-                    () {},
-                  ),
-                  _profileMenuItem(Icons.book_rounded, 'My Journals', () {}),
-                  _profileMenuItem(Icons.settings_rounded, 'Settings', () {}),
-                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
+                    child: ElevatedButton.icon(
                       onPressed: () {
                         context.read<AppState>().logout();
                         Navigator.of(context).pushAndRemoveUntil(
@@ -1003,19 +1105,21 @@ class _ProfileTab extends StatelessWidget {
                           (route) => false,
                         );
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.error,
-                        foregroundColor: AppColors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      child: Text(
+                      icon: const Icon(Icons.logout_rounded),
+                      label: Text(
                         'Logout',
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.error,
+                        foregroundColor: AppColors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
                         ),
                       ),
                     ),
@@ -1031,9 +1135,9 @@ class _ProfileTab extends StatelessWidget {
 
   Widget _statCard(String label, String value, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withOpacity(0.10),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -1041,11 +1145,12 @@ class _ProfileTab extends StatelessWidget {
           Text(
             value,
             style: GoogleFonts.poppins(
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.w700,
               color: color,
             ),
           ),
+          const SizedBox(height: 4),
           Text(
             label,
             style: GoogleFonts.poppins(
@@ -1058,14 +1163,773 @@ class _ProfileTab extends StatelessWidget {
     );
   }
 
-  Widget _profileMenuItem(IconData icon, String label, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.primary),
+  Widget _profileMenuCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.white.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  icon,
+                  color: AppColors.primary,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppColors.textMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textLight,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EditProfileScreen extends StatefulWidget {
+  const _EditProfileScreen();
+
+  @override
+  State<_EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<_EditProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
+
+  late final TextEditingController _nameController;
+  late final TextEditingController _usernameController;
+  late final TextEditingController _emailController;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = context.read<AppState>().currentUser;
+    _nameController = TextEditingController(text: user?.name ?? '');
+    _usernameController = TextEditingController(text: user?.username ?? '');
+    _emailController = TextEditingController(text: user?.email ?? '');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _usernameController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  void _saveProfile() {
+    if (!_formKey.currentState!.validate()) return;
+
+    context.read<AppState>().updateProfile(
+          name: _nameController.text.trim(),
+          username: _usernameController.text.trim(),
+          email: _emailController.text.trim(),
+        );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Profile updated successfully'),
+      ),
+    );
+
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgGradientStart,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        title: Text(
+          'Edit Profile',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary,
+          ),
+        ),
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const _SoftPageBackground(),
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+                decoration: BoxDecoration(
+                  color: AppColors.white.withOpacity(0.92),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryLight,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primary.withOpacity(0.10),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.person,
+                          size: 58,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      _buildFieldLabel('Full Name'),
+                      const SizedBox(height: 8),
+                      _profileTextField(
+                        controller: _nameController,
+                        hintText: 'Enter your full name',
+                        icon: Icons.badge_outlined,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Name cannot be empty';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                      _buildFieldLabel('Username'),
+                      const SizedBox(height: 8),
+                      _profileTextField(
+                        controller: _usernameController,
+                        hintText: 'Enter your username',
+                        icon: Icons.alternate_email_rounded,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Username cannot be empty';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                      _buildFieldLabel('Email'),
+                      const SizedBox(height: 8),
+                      _profileTextField(
+                        controller: _emailController,
+                        hintText: 'Enter your email',
+                        icon: Icons.email_outlined,
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Email cannot be empty';
+                          }
+                          if (!value.contains('@')) {
+                            return 'Enter a valid email';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 30),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _saveProfile,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: AppColors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                          ),
+                          child: Text(
+                            'Save Changes',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFieldLabel(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 6),
+        child: Text(
+          text,
+          style: GoogleFonts.poppins(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppColors.textMedium,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _profileTextField({
+    required TextEditingController controller,
+    required String hintText,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      validator: validator,
+      style: GoogleFonts.poppins(
+        fontSize: 14,
+        color: AppColors.textDark,
+        fontWeight: FontWeight.w500,
+      ),
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: GoogleFonts.poppins(
+          fontSize: 13,
+          color: AppColors.textLight,
+        ),
+        prefixIcon: Icon(
+          icon,
+          color: AppColors.primary,
+          size: 24,
+        ),
+        filled: true,
+        fillColor: const Color(0xFFF3DDE7),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 18,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(24),
+          borderSide: BorderSide(
+            color: AppColors.primary.withOpacity(0.08),
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(24),
+          borderSide: BorderSide(
+            color: AppColors.primary.withOpacity(0.08),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(24),
+          borderSide: const BorderSide(
+            color: AppColors.primary,
+            width: 1.3,
+          ),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(24),
+          borderSide: const BorderSide(
+            color: Colors.redAccent,
+            width: 1.1,
+          ),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(24),
+          borderSide: const BorderSide(
+            color: Colors.redAccent,
+            width: 1.1,
+          ),
+        ),
+        errorStyle: GoogleFonts.poppins(
+          fontSize: 11,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsScreen extends StatefulWidget {
+  const _SettingsScreen();
+
+  @override
+  State<_SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _ChangePasswordScreen extends StatefulWidget {
+  const _ChangePasswordScreen();
+
+  @override
+  State<_ChangePasswordScreen> createState() => _ChangePasswordScreenState();
+}
+
+class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
+  final _formKey = GlobalKey<FormState>();
+
+  final TextEditingController _currentPasswordController =
+      TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
+  bool _obscureCurrent = true;
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+
+  @override
+  void dispose() {
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _handleChangePassword() {
+    if (!_formKey.currentState!.validate()) return;
+
+    final success = context.read<AppState>().changePassword(
+          currentPassword: _currentPasswordController.text.trim(),
+          newPassword: _newPasswordController.text.trim(),
+        );
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Current password is incorrect'),
+        ),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Password updated successfully'),
+      ),
+    );
+
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgGradientStart,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        title: Text(
+          'Change Password',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w600,
+            color: AppColors.primary,
+          ),
+        ),
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const _SoftPageBackground(),
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.white.withOpacity(0.92),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      const CircleAvatar(
+                        radius: 40,
+                        backgroundColor: AppColors.primaryLight,
+                        child: Icon(
+                          Icons.lock_rounded,
+                          size: 42,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      _passwordField(
+                        controller: _currentPasswordController,
+                        label: 'Current Password',
+                        obscureText: _obscureCurrent,
+                        onToggle: () {
+                          setState(() {
+                            _obscureCurrent = !_obscureCurrent;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Current password cannot be empty';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      _passwordField(
+                        controller: _newPasswordController,
+                        label: 'New Password',
+                        obscureText: _obscureNew,
+                        onToggle: () {
+                          setState(() {
+                            _obscureNew = !_obscureNew;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'New password cannot be empty';
+                          }
+                          if (value.trim().length < 6) {
+                            return 'Password must be at least 6 characters';
+                          }
+                          if (value.trim() ==
+                              _currentPasswordController.text.trim()) {
+                            return 'New password must be different';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      _passwordField(
+                        controller: _confirmPasswordController,
+                        label: 'Confirm New Password',
+                        obscureText: _obscureConfirm,
+                        onToggle: () {
+                          setState(() {
+                            _obscureConfirm = !_obscureConfirm;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please confirm your new password';
+                          }
+                          if (value.trim() !=
+                              _newPasswordController.text.trim()) {
+                            return 'Confirmation password does not match';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _handleChangePassword,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: AppColors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                          ),
+                          child: Text(
+                            'Save New Password',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _passwordField({
+    required TextEditingController controller,
+    required String label,
+    required bool obscureText,
+    required VoidCallback onToggle,
+    required String? Function(String?) validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      validator: validator,
+      style: GoogleFonts.poppins(
+        fontSize: 14,
+        color: AppColors.textDark,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: GoogleFonts.poppins(
+          fontSize: 13,
+          color: AppColors.textMedium,
+        ),
+        prefixIcon: const Icon(
+          Icons.lock_outline_rounded,
+          color: AppColors.primary,
+        ),
+        suffixIcon: IconButton(
+          onPressed: onToggle,
+          icon: Icon(
+            obscureText ? Icons.visibility_off : Icons.visibility,
+            color: AppColors.textMedium,
+          ),
+        ),
+        filled: true,
+        fillColor: AppColors.primarySoft,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        errorStyle: GoogleFonts.poppins(fontSize: 11),
+      ),
+    );
+  }
+}
+
+class _SettingsScreenState extends State<_SettingsScreen> {
+  bool _notifications = true;
+  bool _journalReminder = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgGradientStart,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        title: Text(
+          'Settings',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w600,
+            color: AppColors.primary,
+          ),
+        ),
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const _SoftPageBackground(),
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Column(
+                children: [
+                  _settingsSection(
+                    title: 'Preferences',
+                    children: [
+                      _switchTile(
+                        title: 'Notifications',
+                        subtitle: 'Receive important updates',
+                        value: _notifications,
+                        onChanged: (value) {
+                          setState(() => _notifications = value);
+                        },
+                      ),
+                      _switchTile(
+                        title: 'Journal Reminder',
+                        subtitle: 'Daily reminder to write your journal',
+                        value: _journalReminder,
+                        onChanged: (value) {
+                          setState(() => _journalReminder = value);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _settingsSection(
+                    title: 'Account',
+                    children: [
+                      _actionTile(
+                        icon: Icons.lock_outline_rounded,
+                        title: 'Change Password',
+                        subtitle: 'Update your account password',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const _ChangePasswordScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingsSection({
+    required String title,
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _switchTile({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SwitchListTile(
+      value: value,
+      onChanged: onChanged,
+      activeColor: AppColors.primary,
+      contentPadding: EdgeInsets.zero,
       title: Text(
-        label,
+        title,
         style: GoogleFonts.poppins(
           fontSize: 14,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textDark,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: GoogleFonts.poppins(
+          fontSize: 12,
+          color: AppColors.textMedium,
+        ),
+      ),
+    );
+  }
+
+  Widget _actionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: AppColors.primary),
+      ),
+      title: Text(
+        title,
+        style: GoogleFonts.poppins(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textDark,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: GoogleFonts.poppins(
+          fontSize: 12,
+          color: AppColors.textMedium,
         ),
       ),
       trailing: const Icon(
@@ -1073,6 +1937,115 @@ class _ProfileTab extends StatelessWidget {
         color: AppColors.textLight,
       ),
       onTap: onTap,
+    );
+  }
+}
+
+class _AboutAppScreen extends StatelessWidget {
+  const _AboutAppScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgGradientStart,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: AppColors.primary,
+        title: Text(
+          'About App',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w600,
+            color: AppColors.primary,
+          ),
+        ),
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          const _SoftPageBackground(),
+          SafeArea(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.white.withOpacity(0.92),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 150,
+                      height: 150,
+                      padding: const EdgeInsets.all(10),
+                      child: Image.asset(
+                        'assets/images/logo_healinq.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.image_not_supported_outlined,
+                            color: AppColors.primary,
+                            size: 36,
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Version 1.0.0',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: AppColors.textMedium,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'HealinQ is a mental health companion app designed to help users understand their feelings, write journals, and access consultations in a simple and friendly way.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: AppColors.textMedium,
+                        height: 1.7,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primarySoft,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            'Developed for',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppColors.textMedium,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Pemrograman Mobile Project',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
