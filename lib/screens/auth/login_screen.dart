@@ -18,16 +18,29 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final PageController _pageController = PageController();
+  // ignore: unused_field
+  int _currentPage = 0;
   bool _isLoading = false;
 
-  static const Color _baseColor = AppColors.bgGradientStart;
-  static const Color _titleColor = AppColors.brandTeal;
-  static const Color _subtitleColor = AppColors.brandTeal;
+  static final Color _baseColor = AppColors.bgGradientStart;
+  static final Color _titleColor = AppColors.brandTeal;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController.addListener(() {
+      setState(() {
+        _currentPage = _pageController.page?.round() ?? 0;
+      });
+    });
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
