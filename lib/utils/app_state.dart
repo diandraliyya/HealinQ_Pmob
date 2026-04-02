@@ -3,19 +3,30 @@ import '../models/models.dart';
 import 'app_data.dart';
 
 class AppState extends ChangeNotifier {
+  AuthSession? _currentSession;
   UserModel? _currentUser;
+  AdminModel? _currentAdmin;
+  CounselorModel? _currentCounselor;
+
   final List<JournalModel> _journals = List.from(AppData.journals);
   final List<ConsultationModel> _consultations = [];
   final List<MessageModel> _messages = [];
   int _selectedNavIndex = 0;
 
+  AuthSession? get currentSession => _currentSession;
   UserModel? get currentUser => _currentUser;
+  AdminModel? get currentAdmin => _currentAdmin;
+  CounselorModel? get currentCounselor => _currentCounselor;
+
   List<JournalModel> get journals => _journals;
   List<ConsultationModel> get consultations => _consultations;
   List<MessageModel> get messages => _messages;
   int get selectedNavIndex => _selectedNavIndex;
 
-  bool get isLoggedIn => _currentUser != null;
+  bool get isLoggedIn => _currentSession != null;
+  bool get isUser => _currentSession?.accountType == AccountType.user;
+  bool get isAdmin => _currentSession?.accountType == AccountType.admin;
+  bool get isCounselor => _currentSession?.accountType == AccountType.counselor;
 
   void setNavIndex(int index) {
     _selectedNavIndex = index;
@@ -23,24 +34,95 @@ class AppState extends ChangeNotifier {
   }
 
   bool login(String emailOrUsername, String password) {
-    if (emailOrUsername.isNotEmpty && password.isNotEmpty) {
-      _currentUser = UserModel(
-        username: emailOrUsername.contains('@')
-            ? emailOrUsername.split('@')[0]
-            : emailOrUsername,
-        name: 'Buddy',
-        email: emailOrUsername.contains('@')
-            ? emailOrUsername
-            : '$emailOrUsername@healinq.com',
-        password: password,
-        point: 1240,
-        level: 8,
-        streak: 7,
+    final input = emailOrUsername.trim().toLowerCase();
+
+    if (input.isEmpty || password.isEmpty) return false;
+
+    // Dummy login admin
+    if ((input == 'admin' || input == 'admin@healinq.com') &&
+        password == 'admin123') {
+      final admin = AdminModel(
+        id: 1,
+        username: 'admin',
+        name: 'Admin HealinQ',
+        email: 'admin@healinq.com',
+        password: 'admin123',
+      );
+
+      _currentAdmin = admin;
+      _currentUser = null;
+      _currentCounselor = null;
+      _currentSession = AuthSession(
+        id: admin.id,
+        name: admin.name,
+        email: admin.email,
+        accountType: AccountType.admin,
       );
       notifyListeners();
       return true;
     }
-    return false;
+
+    // Dummy login counselor
+    if ((input == 'counselor' || input == 'counselor@healinq.com') &&
+        password == 'counselor123') {
+      final counselor = CounselorModel(
+        id: 999,
+        username: 'counselor',
+        name: 'Dr. Counselor HealinQ',
+        email: 'counselor@healinq.com',
+        password: 'counselor123',
+        specialization: 'General Counseling',
+        rating: 5.0,
+        type: 'Both',
+        location: 'Surabaya',
+        bio: 'Counselor account for demo login.',
+        yearsExperience: 5,
+        priceOnline: 150000,
+        priceOffline: 200000,
+        isVerified: true,
+        isAvailable: true,
+      );
+
+      _currentCounselor = counselor;
+      _currentUser = null;
+      _currentAdmin = null;
+      _currentSession = AuthSession(
+        id: counselor.id,
+        name: counselor.name,
+        email: counselor.email,
+        accountType: AccountType.counselor,
+      );
+      notifyListeners();
+      return true;
+    }
+
+    // Default login user
+    final user = UserModel(
+      id: 1,
+      username: emailOrUsername.contains('@')
+          ? emailOrUsername.split('@')[0]
+          : emailOrUsername,
+      name: 'Buddy',
+      email: emailOrUsername.contains('@')
+          ? emailOrUsername
+          : '$emailOrUsername@healinq.com',
+      password: password,
+      point: 1240,
+      level: 8,
+      streak: 7,
+    );
+
+    _currentUser = user;
+    _currentAdmin = null;
+    _currentCounselor = null;
+    _currentSession = AuthSession(
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      accountType: AccountType.user,
+    );
+    notifyListeners();
+    return true;
   }
 
   bool signUp({
@@ -53,24 +135,36 @@ class AppState extends ChangeNotifier {
     String? gender,
     String? address,
   }) {
-    if (username.isNotEmpty &&
-        name.isNotEmpty &&
-        email.isNotEmpty &&
-        password.isNotEmpty) {
-      _currentUser = UserModel(
-        username: username,
-        name: name,
-        email: email,
-        password: password,
-        birthDate: birthDate,
-        lastEdu: lastEdu,
-        gender: gender,
-        address: address,
-      );
-      notifyListeners();
-      return true;
+    if (username.isEmpty ||
+        name.isEmpty ||
+        email.isEmpty ||
+        password.isEmpty) {
+      return false;
     }
-    return false;
+
+    final user = UserModel(
+      id: DateTime.now().millisecondsSinceEpoch,
+      username: username,
+      name: name,
+      email: email,
+      password: password,
+      birthDate: birthDate,
+      lastEdu: lastEdu,
+      gender: gender,
+      address: address,
+    );
+
+    _currentUser = user;
+    _currentAdmin = null;
+    _currentCounselor = null;
+    _currentSession = AuthSession(
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      accountType: AccountType.user,
+    );
+    notifyListeners();
+    return true;
   }
 
   void updateProfile({
@@ -78,20 +172,19 @@ class AppState extends ChangeNotifier {
     required String name,
     required String email,
   }) {
-    if (_currentUser == null) return;
+    if (_currentUser == null || !isUser) return;
 
-    _currentUser = UserModel(
+    _currentUser = _currentUser!.copyWith(
       username: username,
       name: name,
       email: email,
-      password: _currentUser!.password,
-      birthDate: _currentUser!.birthDate,
-      lastEdu: _currentUser!.lastEdu,
-      gender: _currentUser!.gender,
-      address: _currentUser!.address,
-      point: _currentUser!.point,
-      level: _currentUser!.level,
-      streak: _currentUser!.streak,
+    );
+
+    _currentSession = AuthSession(
+      id: _currentUser!.id,
+      name: _currentUser!.name,
+      email: _currentUser!.email,
+      accountType: AccountType.user,
     );
 
     notifyListeners();
@@ -101,24 +194,14 @@ class AppState extends ChangeNotifier {
     required String currentPassword,
     required String newPassword,
   }) {
-    if (_currentUser == null) return false;
+    if (_currentUser == null || !isUser) return false;
 
     if (_currentUser!.password != currentPassword) {
       return false;
     }
 
-    _currentUser = UserModel(
-      username: _currentUser!.username,
-      name: _currentUser!.name,
-      email: _currentUser!.email,
+    _currentUser = _currentUser!.copyWith(
       password: newPassword,
-      birthDate: _currentUser!.birthDate,
-      lastEdu: _currentUser!.lastEdu,
-      gender: _currentUser!.gender,
-      address: _currentUser!.address,
-      point: _currentUser!.point,
-      level: _currentUser!.level,
-      streak: _currentUser!.streak,
     );
 
     notifyListeners();
@@ -126,7 +209,10 @@ class AppState extends ChangeNotifier {
   }
 
   void logout() {
+    _currentSession = null;
     _currentUser = null;
+    _currentAdmin = null;
+    _currentCounselor = null;
     _selectedNavIndex = 0;
     notifyListeners();
   }
@@ -134,19 +220,16 @@ class AppState extends ChangeNotifier {
   void addJournal(JournalModel journal) {
     _journals.insert(0, journal);
 
-    if (_currentUser != null) {
-      _currentUser = UserModel(
-        username: _currentUser!.username,
+    if (_currentUser != null && isUser) {
+      _currentUser = _currentUser!.copyWith(
+        point: _currentUser!.point + 50,
+      );
+
+      _currentSession = AuthSession(
+        id: _currentUser!.id,
         name: _currentUser!.name,
         email: _currentUser!.email,
-        password: _currentUser!.password,
-        birthDate: _currentUser!.birthDate,
-        lastEdu: _currentUser!.lastEdu,
-        gender: _currentUser!.gender,
-        address: _currentUser!.address,
-        point: _currentUser!.point + 50,
-        level: _currentUser!.level,
-        streak: _currentUser!.streak,
+        accountType: AccountType.user,
       );
     }
 
@@ -167,4 +250,15 @@ class AppState extends ChangeNotifier {
     _messages.clear();
     notifyListeners();
   }
+
+  final List<String> _adminActivities = [
+  'Admin login berhasil',
+];
+
+List<String> get adminActivities => _adminActivities;
+
+void addAdminActivity(String activity) {
+  _adminActivities.add(activity);
+  notifyListeners();
+}
 }

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+
+import '../../models/models.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_state.dart';
 import '../../widgets/common_widgets.dart';
 import '../home/home_screen.dart';
 import 'signup_screen.dart';
+import '../admin/admin_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,12 +22,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final PageController _pageController = PageController();
-  // ignore: unused_field
   int _currentPage = 0;
   bool _isLoading = false;
 
-  static final Color _baseColor = AppColors.bgGradientStart;
-  static final Color _titleColor = AppColors.brandTeal;
+  static const Color _baseColor = AppColors.bgGradientStart;
+  static const Color _titleColor = AppColors.brandTeal;
 
   @override
   void initState() {
@@ -46,30 +48,59 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _login() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
 
-    final success = context.read<AppState>().login(
-          _emailController.text.trim(),
-          _passwordController.text,
-        );
+    final appState = context.read<AppState>();
+    final success = appState.login(
+      _emailController.text.trim(),
+      _passwordController.text,
+    );
 
     setState(() => _isLoading = false);
 
-    if (success) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-        (route) => false,
-      );
-    } else {
+    if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Login failed. Please try again.'),
           backgroundColor: AppColors.error,
         ),
       );
+      return;
     }
+
+    final session = appState.currentSession;
+
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Session not found. Please try again.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    Widget destination;
+
+    switch (session.accountType) {
+      case AccountType.admin:
+        destination = const AdminDashboardScreen();
+        break;
+      case AccountType.counselor:
+        destination = const _CounselorPlaceholderScreen();
+        break;
+      case AccountType.user:
+        destination = const HomeScreen();
+        break;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => destination),
+      (route) => false,
+    );
   }
 
   @override
@@ -263,6 +294,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 20),
+                            Center(
+                              child: Text(
+                                'Demo login:\nAdmin = admin / admin123\nCounselor = counselor / counselor123',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  color: AppColors.textLight,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -289,6 +331,64 @@ class _LoginScreenState extends State<LoginScreen> {
           height: 115,
         );
       },
+    );
+  }
+}
+
+class _CounselorPlaceholderScreen extends StatelessWidget {
+  const _CounselorPlaceholderScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bgGradientStart,
+      appBar: AppBar(
+        title: Text(
+          'Counselor Panel',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary,
+          ),
+        ),
+      ),
+      body: Center(
+        child: Container(
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.medical_services_rounded,
+                size: 64,
+                color: AppColors.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Counselor login berhasil',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Nanti screen ini tinggal diganti ke CounselorDashboardScreen.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: AppColors.textMedium,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

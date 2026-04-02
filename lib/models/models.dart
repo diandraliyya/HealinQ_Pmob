@@ -1,5 +1,26 @@
+enum AccountType {
+  user,
+  admin,
+  counselor,
+}
+
+class AuthSession {
+  final int id;
+  final String name;
+  final String email;
+  final AccountType accountType;
+
+  const AuthSession({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.accountType,
+  });
+}
+
 // User Model
 class UserModel {
+  final int id;
   final String username;
   final String name;
   final String email;
@@ -13,6 +34,7 @@ class UserModel {
   final int streak;
 
   UserModel({
+    required this.id,
     required this.username,
     required this.name,
     required this.email,
@@ -26,18 +48,84 @@ class UserModel {
     this.streak = 0,
   });
 
+  UserModel copyWith({
+    int? id,
+    String? username,
+    String? name,
+    String? email,
+    String? password,
+    String? birthDate,
+    String? lastEdu,
+    String? gender,
+    String? address,
+    int? point,
+    int? level,
+    int? streak,
+  }) {
+    return UserModel(
+      id: id ?? this.id,
+      username: username ?? this.username,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      password: password ?? this.password,
+      birthDate: birthDate ?? this.birthDate,
+      lastEdu: lastEdu ?? this.lastEdu,
+      gender: gender ?? this.gender,
+      address: address ?? this.address,
+      point: point ?? this.point,
+      level: level ?? this.level,
+      streak: streak ?? this.streak,
+    );
+  }
+
   Map<String, dynamic> toMap() => {
-    'username': username, 'name': name, 'email': email,
-    'password': password, 'birthDate': birthDate, 'lastEdu': lastEdu,
-    'gender': gender, 'address': address, 'point': point,
-    'level': level, 'streak': streak,
-  };
+        'id': id,
+        'username': username,
+        'name': name,
+        'email': email,
+        'password': password,
+        'birthDate': birthDate,
+        'lastEdu': lastEdu,
+        'gender': gender,
+        'address': address,
+        'point': point,
+        'level': level,
+        'streak': streak,
+      };
+}
+
+// Admin Model
+class AdminModel {
+  final int id;
+  final String username;
+  final String name;
+  final String email;
+  final String password;
+
+  const AdminModel({
+    required this.id,
+    required this.username,
+    required this.name,
+    required this.email,
+    required this.password,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'username': username,
+        'name': name,
+        'email': email,
+        'password': password,
+      };
 }
 
 // Counselor Model
 class CounselorModel {
   final int id;
+  final String username;
   final String name;
+  final String email;
+  final String password;
   final String specialization;
   final double rating;
   final String type; // Online, Offline, Both
@@ -51,6 +139,9 @@ class CounselorModel {
 
   CounselorModel({
     required this.id,
+    this.username = '',
+    this.email = '',
+    this.password = '',
     required this.name,
     required this.specialization,
     required this.rating,
@@ -63,6 +154,60 @@ class CounselorModel {
     this.isVerified = true,
     this.isAvailable = true,
   });
+
+  CounselorModel copyWith({
+    int? id,
+    String? username,
+    String? name,
+    String? email,
+    String? password,
+    String? specialization,
+    double? rating,
+    String? type,
+    String? location,
+    String? bio,
+    int? yearsExperience,
+    double? priceOnline,
+    double? priceOffline,
+    bool? isVerified,
+    bool? isAvailable,
+  }) {
+    return CounselorModel(
+      id: id ?? this.id,
+      username: username ?? this.username,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      password: password ?? this.password,
+      specialization: specialization ?? this.specialization,
+      rating: rating ?? this.rating,
+      type: type ?? this.type,
+      location: location ?? this.location,
+      bio: bio ?? this.bio,
+      yearsExperience: yearsExperience ?? this.yearsExperience,
+      priceOnline: priceOnline ?? this.priceOnline,
+      priceOffline: priceOffline ?? this.priceOffline,
+      isVerified: isVerified ?? this.isVerified,
+      isAvailable: isAvailable ?? this.isAvailable,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'username': username,
+        'name': name,
+        'email': email,
+        'password': password,
+        'specialization': specialization,
+        'rating': rating,
+        'type': type,
+        'location': location,
+        'bio': bio,
+        'yearsExperience': yearsExperience,
+        'priceOnline': priceOnline,
+        'priceOffline': priceOffline,
+        'isVerified': isVerified,
+        'isAvailable': isAvailable,
+      };
 }
 
 // Journal Model
@@ -124,5 +269,9 @@ class PassionQuestion {
   final String questionText;
   int? answerValue; // 1-5 Likert scale
 
-  PassionQuestion({required this.id, required this.questionText, this.answerValue});
+  PassionQuestion({
+    required this.id,
+    required this.questionText,
+    this.answerValue,
+  });
 }
