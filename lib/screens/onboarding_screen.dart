@@ -13,11 +13,12 @@ class OnboardingScreen extends StatefulWidget {
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pageController = PageController();
+  // ignore: unused_field
   int _currentPage = 0;
 
-  static const Color _welcomeBaseColor = AppColors.bgGradientStart;
-  static const Color _welcomeTitleColor = AppColors.brandTeal;
-  static const Color _welcomeSubtitleColor = AppColors.brandTeal;
+  static final Color _welcomeBaseColor = AppColors.bgGradientStart;
+  static final Color _welcomeTitleColor = AppColors.brandTeal;
+  static final Color _welcomeSubtitleColor = AppColors.brandTeal;
 
   @override
   void dispose() {
