@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import '../models/models.dart';
 import 'app_data.dart';
 
@@ -11,6 +12,7 @@ class AppState extends ChangeNotifier {
   final List<JournalModel> _journals = List.from(AppData.journals);
   final List<ConsultationModel> _consultations = [];
   final List<MessageModel> _messages = [];
+
   int _selectedNavIndex = 0;
 
   AuthSession? get currentSession => _currentSession;
@@ -21,12 +23,14 @@ class AppState extends ChangeNotifier {
   List<JournalModel> get journals => _journals;
   List<ConsultationModel> get consultations => _consultations;
   List<MessageModel> get messages => _messages;
+
   int get selectedNavIndex => _selectedNavIndex;
 
   bool get isLoggedIn => _currentSession != null;
   bool get isUser => _currentSession?.accountType == AccountType.user;
   bool get isAdmin => _currentSession?.accountType == AccountType.admin;
-  bool get isCounselor => _currentSession?.accountType == AccountType.counselor;
+  bool get isCounselor =>
+      _currentSession?.accountType == AccountType.counselor;
 
   void setNavIndex(int index) {
     _selectedNavIndex = index;
@@ -52,12 +56,14 @@ class AppState extends ChangeNotifier {
       _currentAdmin = admin;
       _currentUser = null;
       _currentCounselor = null;
+
       _currentSession = AuthSession(
         id: admin.id,
         name: admin.name,
         email: admin.email,
         accountType: AccountType.admin,
       );
+
       notifyListeners();
       return true;
     }
@@ -86,12 +92,14 @@ class AppState extends ChangeNotifier {
       _currentCounselor = counselor;
       _currentUser = null;
       _currentAdmin = null;
+
       _currentSession = AuthSession(
         id: counselor.id,
         name: counselor.name,
         email: counselor.email,
         accountType: AccountType.counselor,
       );
+
       notifyListeners();
       return true;
     }
@@ -115,12 +123,14 @@ class AppState extends ChangeNotifier {
     _currentUser = user;
     _currentAdmin = null;
     _currentCounselor = null;
+
     _currentSession = AuthSession(
       id: user.id,
       name: user.name,
       email: user.email,
       accountType: AccountType.user,
     );
+
     notifyListeners();
     return true;
   }
@@ -135,18 +145,18 @@ class AppState extends ChangeNotifier {
     String? gender,
     String? address,
   }) {
-    if (username.isEmpty ||
-        name.isEmpty ||
-        email.isEmpty ||
+    if (username.trim().isEmpty ||
+        name.trim().isEmpty ||
+        email.trim().isEmpty ||
         password.isEmpty) {
       return false;
     }
 
     final user = UserModel(
       id: DateTime.now().millisecondsSinceEpoch,
-      username: username,
-      name: name,
-      email: email,
+      username: username.trim(),
+      name: name.trim(),
+      email: email.trim(),
       password: password,
       birthDate: birthDate,
       lastEdu: lastEdu,
@@ -157,12 +167,14 @@ class AppState extends ChangeNotifier {
     _currentUser = user;
     _currentAdmin = null;
     _currentCounselor = null;
+
     _currentSession = AuthSession(
       id: user.id,
       name: user.name,
       email: user.email,
       accountType: AccountType.user,
     );
+
     notifyListeners();
     return true;
   }
@@ -175,9 +187,9 @@ class AppState extends ChangeNotifier {
     if (_currentUser == null || !isUser) return;
 
     _currentUser = _currentUser!.copyWith(
-      username: username,
-      name: name,
-      email: email,
+      username: username.trim(),
+      name: name.trim(),
+      email: email.trim(),
     );
 
     _currentSession = AuthSession(
@@ -214,6 +226,7 @@ class AppState extends ChangeNotifier {
     _currentAdmin = null;
     _currentCounselor = null;
     _selectedNavIndex = 0;
+
     notifyListeners();
   }
 
@@ -241,6 +254,49 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateConsultationStatus(int consultationId, String status) {
+    final index = _consultations.indexWhere(
+      (item) => item.id == consultationId,
+    );
+
+    if (index == -1) return;
+
+    _consultations[index] = _consultations[index].copyWith(
+      status: status,
+    );
+
+    notifyListeners();
+  }
+
+  List<ConsultationModel> getOnlineConsultations() {
+    return _consultations.where((consultation) {
+      return consultation.type.toLowerCase() == 'online';
+    }).toList();
+  }
+
+  List<ConsultationModel> getOfflineConsultations() {
+    return _consultations.where((consultation) {
+      return consultation.type.toLowerCase() == 'offline';
+    }).toList();
+  }
+
+  List<ConsultationModel> getConfirmedOnlineConsultations() {
+    return _consultations.where((consultation) {
+      return consultation.type.toLowerCase() == 'online' &&
+          consultation.status == 'Confirmed';
+    }).toList();
+  }
+
+  ConsultationModel? getConsultationById(int id) {
+    try {
+      return _consultations.firstWhere(
+        (consultation) => consultation.id == id,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   void sendMessage(MessageModel message) {
     _messages.add(message);
     notifyListeners();
@@ -252,13 +308,13 @@ class AppState extends ChangeNotifier {
   }
 
   final List<String> _adminActivities = [
-  'Admin login berhasil',
-];
+    'Admin login berhasil',
+  ];
 
-List<String> get adminActivities => _adminActivities;
+  List<String> get adminActivities => _adminActivities;
 
-void addAdminActivity(String activity) {
-  _adminActivities.add(activity);
-  notifyListeners();
-}
+  void addAdminActivity(String activity) {
+    _adminActivities.add(activity);
+    notifyListeners();
+  }
 }

@@ -9,6 +9,7 @@ import '../../widgets/common_widgets.dart';
 import '../home/home_screen.dart';
 import 'signup_screen.dart';
 import '../admin/admin_dashboard_screen.dart';
+import '../counselor/counselor_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -90,7 +91,7 @@ class _LoginScreenState extends State<LoginScreen> {
         destination = const AdminDashboardScreen();
         break;
       case AccountType.counselor:
-        destination = const _CounselorPlaceholderScreen();
+        destination = const CounselorDashboardScreen();
         break;
       case AccountType.user:
         destination = const HomeScreen();
