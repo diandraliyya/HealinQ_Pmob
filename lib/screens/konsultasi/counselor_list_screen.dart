@@ -1,20 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import '../../theme/app_theme.dart';
 import '../../utils/app_data.dart';
 import '../../widgets/common_widgets.dart';
 import 'booking_form_screen.dart';
-import '../chat/message_list_screen.dart';
 
 class CounselorListScreen extends StatelessWidget {
   final bool isOffline;
-  const CounselorListScreen({super.key, required this.isOffline});
+
+  const CounselorListScreen({
+    super.key,
+    required this.isOffline,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final counselors = AppData.counselors.where((c) {
-      if (isOffline) return c.type == 'Offline' || c.type == 'Both';
-      return c.type == 'Online' || c.type == 'Both';
+    final counselors = AppData.counselors.where((counselor) {
+      if (isOffline) {
+        return counselor.type == 'Offline' || counselor.type == 'Both';
+      }
+
+      return counselor.type == 'Online' || counselor.type == 'Both';
     }).toList();
 
     return Scaffold(
@@ -43,7 +50,9 @@ class CounselorListScreen extends StatelessWidget {
                     ),
                     Expanded(
                       child: Text(
-                        'Konsultasi',
+                        isOffline
+                            ? 'Offline Consultation'
+                            : 'Online Consultation',
                         style: GoogleFonts.poppins(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
@@ -57,87 +66,78 @@ class CounselorListScreen extends StatelessWidget {
               ),
               Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const SizedBox(),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const MessageListScreen(),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.teal,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.message_rounded,
-                              color: AppColors.white,
-                              size: 18,
-                            ),
-                            Text(
-                              ' Message',
-                              style: GoogleFonts.poppins(
-                                color: AppColors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                 child: Text(
-                  'Select Counselor',
+                  'Pilih counselor terlebih dahulu, lalu tentukan jadwal konsultasi.',
+                  textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
+                    fontSize: 13,
+                    color: AppColors.textMedium,
                   ),
                 ),
               ),
+              const SizedBox(height: 8),
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: counselors.length,
-                  itemBuilder: (ctx, i) {
-                    final c = counselors[i];
-                    return CounselorCard(
-                      name: c.name,
-                      specialization: c.specialization,
-                      rating: c.rating,
-                      onBook: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => BookingFormScreen(
-                            counselor: c,
-                            isOffline: isOffline,
-                          ),
-                        ),
+                child: counselors.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                        itemCount: counselors.length,
+                        itemBuilder: (context, index) {
+                          final counselor = counselors[index];
+
+                          return CounselorCard(
+                            name: counselor.name,
+                            specialization: counselor.specialization,
+                            rating: counselor.rating,
+                            onBook: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => BookingFormScreen(
+                                    counselor: counselor,
+                                    isOffline: isOffline,
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppColors.white.withOpacity(0.92),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.person_off_rounded,
+              color: AppColors.textLight,
+              size: 52,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No Counselor Available',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
+            ),
+          ],
         ),
       ),
     );

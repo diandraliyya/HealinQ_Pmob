@@ -246,6 +246,26 @@ class ConsultationModel {
     this.notes,
     required this.bookingCode,
   });
+
+  ConsultationModel copyWith({
+    int? id,
+    CounselorModel? counselor,
+    String? type,
+    DateTime? scheduledAt,
+    String? status,
+    String? notes,
+    String? bookingCode,
+  }) {
+    return ConsultationModel(
+      id: id ?? this.id,
+      counselor: counselor ?? this.counselor,
+      type: type ?? this.type,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
+      status: status ?? this.status,
+      notes: notes ?? this.notes,
+      bookingCode: bookingCode ?? this.bookingCode,
+    );
+  }
 }
 
 // Message Model
