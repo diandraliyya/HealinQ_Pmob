@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/app_data.dart';
 import '../../widgets/common_widgets.dart';
 import 'booking_form_screen.dart';
 
-class CounselorListScreen extends StatelessWidget {
+class CounselorListScreen extends StatefulWidget {
   final bool isOffline;
 
   const CounselorListScreen({
@@ -15,15 +15,20 @@ class CounselorListScreen extends StatelessWidget {
   });
 
   @override
+  State<CounselorListScreen> createState() => _CounselorListScreenState();
+}
+
+class _CounselorListScreenState extends State<CounselorListScreen> {
+  late Future<List<dynamic>> _counselorsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _counselorsFuture = ApiService.getCounselors();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final counselors = AppData.counselors.where((counselor) {
-      if (isOffline) {
-        return counselor.type == 'Offline' || counselor.type == 'Both';
-      }
-
-      return counselor.type == 'Online' || counselor.type == 'Both';
-    }).toList();
-
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -50,7 +55,7 @@ class CounselorListScreen extends StatelessWidget {
                     ),
                     Expanded(
                       child: Text(
-                        isOffline
+                        widget.isOffline
                             ? 'Offline Consultation'
                             : 'Online Consultation',
                         style: GoogleFonts.poppins(
@@ -78,31 +83,55 @@ class CounselorListScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Expanded(
-                child: counselors.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                        itemCount: counselors.length,
-                        itemBuilder: (context, index) {
-                          final counselor = counselors[index];
+                child: FutureBuilder<List<dynamic>>(
+                  future: _counselorsFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primary,
+                        ),
+                      );
+                    }
 
-                          return CounselorCard(
-                            name: counselor.name,
-                            specialization: counselor.specialization,
-                            rating: counselor.rating,
-                            onBook: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => BookingFormScreen(
-                                    counselor: counselor,
-                                    isOffline: isOffline,
-                                  ),
+                    if (snapshot.hasError) {
+                      return _buildErrorState(snapshot.error.toString());
+                    }
+
+                    final counselors = snapshot.data ?? [];
+
+                    if (counselors.isEmpty) {
+                      return _buildEmptyState();
+                    }
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      itemCount: counselors.length,
+                      itemBuilder: (context, index) {
+                        final counselor = counselors[index];
+
+                        return CounselorCard(
+                          name: counselor['name'] ?? '-',
+                          specialization: counselor['specialization'] ?? '-',
+                          rating: double.tryParse(
+                                counselor['rating'].toString(),
+                              ) ??
+                              0.0,
+                          onBook: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => BookingFormScreen(
+                                  counselor: counselor,
+                                  isOffline: widget.isOffline,
                                 ),
-                              );
-                            },
-                          );
-                        },
-                      ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -138,6 +167,28 @@ class CounselorListScreen extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String message) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: AppColors.white.withOpacity(0.92),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Text(
+          message.replaceAll('Exception: ', ''),
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            fontSize: 13,
+            color: AppColors.error,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
