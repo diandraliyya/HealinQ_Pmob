@@ -6,7 +6,6 @@ import '../../models/models.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_state.dart';
 import '../../widgets/common_widgets.dart';
-import '../../services/api_service.dart';
 import '../home/home_screen.dart';
 import 'signup_screen.dart';
 import '../admin/admin_dashboard_screen.dart';
@@ -52,49 +51,57 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
 
-    try {
-      final data = await ApiService.login(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
+    final appState = context.read<AppState>();
+    final success = appState.login(
+      _emailController.text.trim(),
+      _passwordController.text,
+    );
 
-      if (!mounted) return;
+    setState(() => _isLoading = false);
 
-      final role = data['user']['role'];
-
-      Widget destination;
-
-      switch (role) {
-        case 'admin':
-          destination = const AdminDashboardScreen();
-          break;
-        case 'counselor':
-          destination = const CounselorDashboardScreen();
-          break;
-        default:
-          destination = const HomeScreen();
-          break;
-      }
-
-      setState(() => _isLoading = false);
-
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => destination),
-        (route) => false,
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() => _isLoading = false);
-
+    if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
+        const SnackBar(
+          content: Text('Login failed. Please try again.'),
           backgroundColor: AppColors.error,
         ),
       );
+      return;
     }
+
+    final session = appState.currentSession;
+
+    if (session == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Session not found. Please try again.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    Widget destination;
+
+    switch (session.accountType) {
+      case AccountType.admin:
+        destination = const AdminDashboardScreen();
+        break;
+      case AccountType.counselor:
+        destination = const CounselorDashboardScreen();
+        break;
+      case AccountType.user:
+        destination = const HomeScreen();
+        break;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => destination),
+      (route) => false,
+    );
   }
 
   @override
@@ -197,7 +204,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
-                                onPressed: _isLoading ? null : _login,
+                                onPressed: _login,
                                 icon: const Icon(
                                   Icons.g_mobiledata,
                                   size: 24,
