@@ -27,14 +27,14 @@ class _CounselorDashboardScreenState extends State<CounselorDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-  final pages = [
-  _CounselorDashboardHome(
-    onNavigate: _changePage,
-  ),
-  const CounselorChatListScreen(),
-  const CounselorScheduleScreen(),
-  const CounselorProfileScreen(),
-];
+    final pages = [
+      _CounselorDashboardHome(
+        onNavigate: _changePage,
+      ),
+      const CounselorChatListScreen(),
+      const CounselorScheduleScreen(),
+      const CounselorProfileScreen(),
+    ];
 
     return Scaffold(
       backgroundColor: AppColors.bgGradientStart,
@@ -130,7 +130,6 @@ class _CounselorDashboardHome extends StatelessWidget {
                     },
                   ),
                   const SizedBox(height: 20),
-
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(18),
@@ -209,9 +208,7 @@ class _CounselorDashboardHome extends StatelessWidget {
                       ],
                     ),
                   ),
-
                   const SizedBox(height: 20),
-
                   GridView.count(
                     crossAxisCount: 2,
                     crossAxisSpacing: 12,
@@ -246,9 +243,7 @@ class _CounselorDashboardHome extends StatelessWidget {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 22),
-
                   Text(
                     'Quick Access',
                     style: GoogleFonts.poppins(
@@ -258,7 +253,6 @@ class _CounselorDashboardHome extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-
                   _QuickAccessCard(
                     icon: Icons.chat_bubble_rounded,
                     title: 'Balas Chat User',

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 import 'login_screen.dart';
@@ -33,19 +35,42 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _signUp() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-    );
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Account created! Please login.'),
-        backgroundColor: AppColors.success,
-      ),
-    );
+
+    try {
+      await AuthService().signUpUser(
+        username: _usernameCtrl.text.trim(),
+        email: _emailCtrl.text.trim(),
+        password: _passwordCtrl.text,
+      );
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Account created! Please login.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sign up failed: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -152,55 +177,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   : null,
                             ),
                             const SizedBox(height: 24),
-                            Row(
-                              children: [
-                                const Expanded(child: Divider()),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                  ),
-                                  child: Text(
-                                    'or',
-                                    style: GoogleFonts.poppins(
-                                      color: AppColors.textLight,
-                                    ),
-                                  ),
-                                ),
-                                const Expanded(child: Divider()),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _signUp,
-                                icon: const Icon(
-                                  Icons.g_mobiledata,
-                                  size: 24,
-                                  color: Colors.blue,
-                                ),
-                                label: Text(
-                                  'Register with Google',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppColors.textDark,
-                                  ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                  side: const BorderSide(
-                                    color: AppColors.surfaceBorder,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton(
@@ -237,7 +213,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                             const SizedBox(height: 20),
                             Center(
                               child: GestureDetector(
-                                onTap: () => Navigator.of(context).pushReplacement(
+                                onTap: () =>
+                                    Navigator.of(context).pushReplacement(
                                   MaterialPageRoute(
                                     builder: (_) => const LoginScreen(),
                                   ),
@@ -284,10 +261,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       height: 100,
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) {
-        return const SizedBox(
-          width: 100,
-          height: 100,
-        );
+        return const SizedBox(width: 100, height: 100);
       },
     );
   }
