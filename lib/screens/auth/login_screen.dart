@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
-
-import '../../models/models.dart';
+import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/app_state.dart';
 import '../../widgets/common_widgets.dart';
-import '../home/home_screen.dart';
-import 'signup_screen.dart';
 import '../admin/admin_dashboard_screen.dart';
 import '../counselor/counselor_dashboard_screen.dart';
+import '../home/home_screen.dart';
+import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -22,85 +19,77 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
+
   bool _isLoading = false;
 
   static const Color _baseColor = AppColors.bgGradientStart;
   static const Color _titleColor = AppColors.brandTeal;
 
   @override
-  void initState() {
-    super.initState();
-    _pageController.addListener(() {
-      setState(() {
-        _currentPage = _pageController.page?.round() ?? 0;
-      });
-    });
-  }
-
-  @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
-    _pageController.dispose();
     super.dispose();
   }
 
-  void _login() async {
+  Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
 
-    final appState = context.read<AppState>();
-    final success = appState.login(
-      _emailController.text.trim(),
-      _passwordController.text,
-    );
+    try {
+      final profile = await AuthService().login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
 
-    setState(() => _isLoading = false);
+      if (!mounted) return;
 
-    if (!success) {
+      final role = profile['account_type'] as String? ?? 'user';
+
+      Widget destination;
+
+      switch (role) {
+        case 'admin':
+          destination = const AdminDashboardScreen();
+          break;
+        case 'counselor':
+          destination = const CounselorDashboardScreen();
+          break;
+        case 'user':
+        default:
+          destination = const HomeScreen();
+          break;
+      }
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => destination),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Login failed. Please try again.'),
+        SnackBar(
+          content: Text('Login failed: $e'),
           backgroundColor: AppColors.error,
         ),
       );
-      return;
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
 
-    final session = appState.currentSession;
-
-    if (session == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Session not found. Please try again.'),
-          backgroundColor: AppColors.error,
+  void _loginWithGoogle() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Google Login akan kita integrasikan setelah login email berhasil.',
         ),
-      );
-      return;
-    }
-
-    Widget destination;
-
-    switch (session.accountType) {
-      case AccountType.admin:
-        destination = const AdminDashboardScreen();
-        break;
-      case AccountType.counselor:
-        destination = const CounselorDashboardScreen();
-        break;
-      case AccountType.user:
-        destination = const HomeScreen();
-        break;
-    }
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => destination),
-      (route) => false,
+        backgroundColor: AppColors.brandTeal,
+      ),
     );
   }
 
@@ -166,12 +155,18 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 28),
                             AppTextField(
-                              hint: 'Username/Email',
+                              hint: 'Email',
                               controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Please enter your email or username'
-                                  : null,
+                              validator: (v) {
+                                if (v == null || v.isEmpty) {
+                                  return 'Please enter your email';
+                                }
+                                if (!v.contains('@')) {
+                                  return 'Please enter a valid email';
+                                }
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 16),
                             AppTextField(
@@ -204,7 +199,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
-                                onPressed: _login,
+                                onPressed: _isLoading ? null : _loginWithGoogle,
                                 icon: const Icon(
                                   Icons.g_mobiledata,
                                   size: 24,
@@ -295,17 +290,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 20),
-                            Center(
-                              child: Text(
-                                'Demo login:\nAdmin = admin / admin123\nCounselor = counselor / counselor123',
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  color: AppColors.textLight,
-                                ),
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -327,69 +311,8 @@ class _LoginScreenState extends State<LoginScreen> {
       height: 115,
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) {
-        return const SizedBox(
-          width: 115,
-          height: 115,
-        );
+        return const SizedBox(width: 115, height: 115);
       },
-    );
-  }
-}
-
-class _CounselorPlaceholderScreen extends StatelessWidget {
-  const _CounselorPlaceholderScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bgGradientStart,
-      appBar: AppBar(
-        title: Text(
-          'Counselor Panel',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w700,
-            color: AppColors.primary,
-          ),
-        ),
-      ),
-      body: Center(
-        child: Container(
-          margin: const EdgeInsets.all(24),
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.medical_services_rounded,
-                size: 64,
-                color: AppColors.primary,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Counselor login berhasil',
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Nanti screen ini tinggal diganti ke CounselorDashboardScreen.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: AppColors.textMedium,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
