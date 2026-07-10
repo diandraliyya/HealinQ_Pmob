@@ -1,113 +1,150 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
 
-import '../../models/models.dart';
+import '../../models/booking_model.dart';
+import '../../services/booking_service.dart';
 import '../../theme/app_theme.dart';
-import '../../utils/app_state.dart';
-import '../chat/room_chat_screen.dart';
 import 'booking_ticket_screen.dart';
+import 'payment_screen.dart';
 
-class MyBookingsScreen extends StatelessWidget {
+class MyBookingsScreen extends StatefulWidget {
   const MyBookingsScreen({super.key});
 
   @override
+  State<MyBookingsScreen> createState() => _MyBookingsScreenState();
+}
+
+class _MyBookingsScreenState extends State<MyBookingsScreen> {
+  final BookingService _service = BookingService();
+
+  List<BookingModel> _bookings = <BookingModel>[];
+  bool _isLoading = true;
+  String? _errorMessage;
+  String _selectedFilter = 'all';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBookings();
+  }
+
+  Future<void> _loadBookings({bool showLoading = true}) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    try {
+      final List<BookingModel> result = await _service.getMyBookings();
+
+      if (!mounted) return;
+
+      setState(() {
+        _bookings = result;
+        _errorMessage = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = _cleanError(error);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  List<BookingModel> get _visibleBookings {
+    switch (_selectedFilter) {
+      case 'verification':
+        return _bookings
+            .where((BookingModel item) => item.isWaitingForVerification)
+            .toList();
+      case 'confirmed':
+        return _bookings
+            .where((BookingModel item) => item.isConfirmed)
+            .toList();
+      case 'payment':
+        return _bookings
+            .where((BookingModel item) => item.canRetryPayment)
+            .toList();
+      case 'all':
+      default:
+        return _bookings;
+    }
+  }
+
+  int get _verificationCount => _bookings
+      .where((BookingModel item) => item.isWaitingForVerification)
+      .length;
+
+  int get _confirmedCount =>
+      _bookings.where((BookingModel item) => item.isConfirmed).length;
+
+  int get _paymentCount =>
+      _bookings.where((BookingModel item) => item.canRetryPayment).length;
+
+  Future<void> _openTicket(BookingModel booking) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => BookingTicketScreen(
+          consultationId: booking.consultationId,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      await _loadBookings(showLoading: false);
+    }
+  }
+
+  Future<void> _continuePayment(BookingModel booking) async {
+    final bool? submitted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => PaymentScreen(
+          consultationId: booking.consultationId,
+          paymentId: booking.paymentId,
+          amount: booking.amount,
+        ),
+      ),
+    );
+
+    if (submitted == true && mounted) {
+      await _loadBookings(showLoading: false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final consultations = context.watch<AppState>().consultations;
-
-    final sortedConsultations = List<ConsultationModel>.from(consultations)
-      ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
-
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFB2EBF2), Color(0xFFFCE4EC)],
+            colors: <Color>[
+              Color(0xFFB2EBF2),
+              Color(0xFFFCE4EC),
+            ],
           ),
         ),
         child: SafeArea(
           child: Column(
-            children: [
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(
-                        Icons.arrow_back_ios_rounded,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        'My Bookings',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Lihat semua tiket konsultasi online dan offline kamu.',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: AppColors.textMedium,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
+            children: <Widget>[
+              _buildHeader(),
               Expanded(
-                child: sortedConsultations.isEmpty
-                    ? _buildEmptyState(context)
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                        itemCount: sortedConsultations.length,
-                        itemBuilder: (context, index) {
-                          final consultation = sortedConsultations[index];
-
-                          return _BookingCard(
-                            consultation: consultation,
-                            onViewTicket: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => BookingTicketScreen(
-                                    consultation: consultation,
-                                    isOffline:
-                                        consultation.type.toLowerCase() ==
-                                            'offline',
-                                    fromMyBookings: true,
-                                  ),
-                                ),
-                              );
-                            },
-                            onOpenChat: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => RoomChatScreen(
-                                    counselor: consultation.counselor,
-                                    consultation: consultation,
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
+                child: RefreshIndicator(
+                  color: AppColors.primary,
+                  onRefresh: () => _loadBookings(showLoading: false),
+                  child: _buildContent(),
+                ),
               ),
             ],
           ),
@@ -116,163 +153,224 @@ class MyBookingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.all(24),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.white.withOpacity(0.94),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 16, 8),
+      child: Row(
+        children: <Widget>[
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: AppColors.primary,
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.receipt_long_outlined,
-              size: 56,
-              color: AppColors.textLight,
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'No bookings yet',
-              style: GoogleFonts.poppins(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Kamu belum memiliki tiket konsultasi. Silakan booking konsultasi terlebih dahulu.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textMedium,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.white,
-              ),
-              child: Text(
-                'Book Consultation',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'My Bookings',
+                  style: GoogleFonts.poppins(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                  ),
                 ),
-              ),
+                Text(
+                  'Pantau pembayaran dan status konsultasimu.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: AppColors.textMedium,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _isLoading ? null : _loadBookings,
+            icon: const Icon(
+              Icons.refresh_rounded,
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const <Widget>[
+          SizedBox(height: 220),
+          Center(
+            child: CircularProgressIndicator(
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_errorMessage != null) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        children: <Widget>[
+          const SizedBox(height: 90),
+          _buildErrorState(),
+        ],
+      );
+    }
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+      children: <Widget>[
+        _buildStats(),
+        const SizedBox(height: 16),
+        _buildFilter(),
+        const SizedBox(height: 14),
+        if (_visibleBookings.isEmpty)
+          _buildEmptyState()
+        else
+          ..._visibleBookings.map(_buildBookingCard),
+      ],
+    );
+  }
+
+  Widget _buildStats() {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: _statCard(
+            title: 'Total',
+            value: '${_bookings.length}',
+            icon: Icons.receipt_long_rounded,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: _statCard(
+            title: 'Verifikasi',
+            value: '$_verificationCount',
+            icon: Icons.hourglass_top_rounded,
+            color: const Color(0xFFD68A1F),
+          ),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: _statCard(
+            title: 'Confirmed',
+            value: '$_confirmedCount',
+            icon: Icons.check_circle_rounded,
+            color: AppColors.success,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _statCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      height: 104,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          CircleAvatar(
+            radius: 17,
+            backgroundColor: color.withOpacity(0.12),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textDark,
+            ),
+          ),
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 9,
+              color: AppColors.textMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilter() {
+    return SizedBox(
+      height: 40,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: <Widget>[
+          _filterChip('all', 'All (${_bookings.length})'),
+          _filterChip('verification', 'Verification ($_verificationCount)'),
+          _filterChip('payment', 'Payment ($_paymentCount)'),
+          _filterChip('confirmed', 'Confirmed ($_confirmedCount)'),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterChip(String value, String label) {
+    final bool selected = _selectedFilter == value;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        selected: selected,
+        onSelected: (_) {
+          setState(() {
+            _selectedFilter = value;
+          });
+        },
+        selectedColor: AppColors.primary,
+        backgroundColor: AppColors.primarySoft,
+        side: BorderSide.none,
+        label: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: selected ? AppColors.white : AppColors.primary,
+          ),
         ),
       ),
     );
   }
-}
 
-class _BookingCard extends StatelessWidget {
-  final ConsultationModel consultation;
-  final VoidCallback onViewTicket;
-  final VoidCallback onOpenChat;
-
-  const _BookingCard({
-    required this.consultation,
-    required this.onViewTicket,
-    required this.onOpenChat,
-  });
-
-  bool get _isOffline => consultation.type.toLowerCase() == 'offline';
-  bool get _isOnline => consultation.type.toLowerCase() == 'online';
-
-  DateTime get _sessionStart => consultation.scheduledAt;
-  DateTime get _sessionEnd => consultation.scheduledAt.add(
-        const Duration(hours: 1),
-      );
-
-  bool get _isConfirmed => consultation.status == 'Confirmed';
-
-  bool get _isBeforeSession {
-    final now = DateTime.now();
-    return now.isBefore(_sessionStart);
-  }
-
-  bool get _isDuringSession {
-    final now = DateTime.now();
-    return (now.isAtSameMomentAs(_sessionStart) ||
-            now.isAfter(_sessionStart)) &&
-        now.isBefore(_sessionEnd);
-  }
-
-  bool get _isSessionEnded {
-    final now = DateTime.now();
-    return now.isAtSameMomentAs(_sessionEnd) || now.isAfter(_sessionEnd);
-  }
-
-  bool get _canOpenChat {
-    return _isOnline && _isConfirmed && _isDuringSession;
-  }
-
-  String get _chatButtonText {
-    if (_isOffline) return 'Offline Ticket';
-
-    if (!_isConfirmed) {
-      return 'Need Confirm';
-    }
-
-    if (_isBeforeSession) {
-      return 'Not Started';
-    }
-
-    if (_isSessionEnded) {
-      return 'Session Ended';
-    }
-
-    return 'Open Chat';
-  }
-
-  IconData get _chatButtonIcon {
-    if (!_isConfirmed) return Icons.lock_outline_rounded;
-    if (_isBeforeSession) return Icons.lock_clock_rounded;
-    if (_isSessionEnded) return Icons.event_busy_rounded;
-    return Icons.chat_bubble_rounded;
-  }
-
-  Color get _chatButtonColor {
-    if (_canOpenChat) return AppColors.primary;
-    return AppColors.textLight.withOpacity(0.18);
-  }
-
-  Color get _chatButtonTextColor {
-    if (_canOpenChat) return AppColors.white;
-    return AppColors.textMedium;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dateText = DateFormat('EEEE, d MMM yyyy').format(
-      consultation.scheduledAt,
+  Widget _buildBookingCard(BookingModel booking) {
+    final Color statusColor = _consultationStatusColor(
+      booking.consultationStatus,
     );
-    final timeText = DateFormat('HH.00').format(consultation.scheduledAt);
-    final endText = DateFormat('HH.00').format(_sessionEnd);
-    final statusColor = _statusColor(consultation.status);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: AppColors.white.withOpacity(0.94),
+        color: AppColors.white.withOpacity(0.95),
         borderRadius: BorderRadius.circular(22),
-        boxShadow: [
+        boxShadow: <BoxShadow>[
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
@@ -281,26 +379,31 @@ class _BookingCard extends StatelessWidget {
         ],
       ),
       child: Column(
-        children: [
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
           Row(
-            children: [
+            children: <Widget>[
               CircleAvatar(
-                radius: 28,
-                backgroundColor:
-                    _isOffline ? AppColors.primarySoft : AppColors.secondaryLight,
+                radius: 25,
+                backgroundColor: booking.isOnline
+                    ? AppColors.secondaryLight
+                    : AppColors.primarySoft,
                 child: Icon(
-                  _isOffline ? Icons.people_rounded : Icons.chat_bubble_rounded,
-                  color: _isOffline ? AppColors.primary : AppColors.teal,
-                  size: 30,
+                  booking.isOnline
+                      ? Icons.videocam_rounded
+                      : Icons.location_on_rounded,
+                  color: booking.isOnline
+                      ? AppColors.teal
+                      : AppColors.primary,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                  children: <Widget>[
                     Text(
-                      consultation.counselor.name,
+                      booking.counselorName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
@@ -309,13 +412,12 @@ class _BookingCard extends StatelessWidget {
                         color: AppColors.textDark,
                       ),
                     ),
-                    const SizedBox(height: 3),
                     Text(
-                      '${consultation.counselor.specialization} • ${consultation.type}',
+                      '${booking.specialization} • ${booking.consultationType.toUpperCase()}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 10,
                         color: AppColors.textMedium,
                       ),
                     ),
@@ -325,16 +427,16 @@ class _BookingCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 9,
-                  vertical: 5,
+                  vertical: 6,
                 ),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
-                  consultation.status,
+                  booking.consultationStatusLabel,
                   style: GoogleFonts.poppins(
-                    fontSize: 10,
+                    fontSize: 9,
                     fontWeight: FontWeight.w700,
                     color: statusColor,
                   ),
@@ -349,70 +451,61 @@ class _BookingCard extends StatelessWidget {
               color: AppColors.primarySoft,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.calendar_today_rounded,
-                  size: 16,
-                  color: AppColors.primary,
+            child: Column(
+              children: <Widget>[
+                _infoRow(
+                  Icons.confirmation_number_rounded,
+                  booking.bookingCode,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$dateText • $timeText-$endText WIB',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
-                    ),
+                const SizedBox(height: 7),
+                _infoRow(
+                  Icons.calendar_today_rounded,
+                  DateFormat('d MMM yyyy, HH:mm').format(
+                    booking.scheduledStart,
                   ),
+                ),
+                const SizedBox(height: 7),
+                _infoRow(
+                  Icons.payments_rounded,
+                  '${_formatCurrency(booking.amount)} • ${booking.paymentStatusLabel}',
                 ),
               ],
             ),
           ),
-          if (_isOffline) ...[
-            const SizedBox(height: 8),
+          if (booking.paymentStatus == 'rejected') ...<Widget>[
+            const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.all(12),
+              width: double.infinity,
+              padding: const EdgeInsets.all(11),
               decoration: BoxDecoration(
-                color: AppColors.surfaceMuted,
-                borderRadius: BorderRadius.circular(16),
+                color: AppColors.error.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.location_on_rounded,
-                    size: 16,
-                    color: AppColors.textMedium,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      consultation.counselor.location,
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppColors.textMedium,
-                      ),
-                    ),
-                  ),
-                ],
+              child: Text(
+                'Pembayaran ditolak: '
+                '${booking.rejectionReason?.trim().isNotEmpty == true ? booking.rejectionReason : 'Silakan unggah ulang bukti pembayaran.'}',
+                style: GoogleFonts.poppins(
+                  fontSize: 10,
+                  height: 1.5,
+                  color: AppColors.error,
+                ),
               ),
             ),
           ],
-          if (_isOnline) ...[
-            const SizedBox(height: 8),
-            _buildOnlineSessionInfo(),
-          ],
           const SizedBox(height: 12),
           Row(
-            children: [
+            children: <Widget>[
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: onViewTicket,
-                  icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                  onPressed: () => _openTicket(booking),
+                  icon: const Icon(
+                    Icons.receipt_long_rounded,
+                    size: 18,
+                  ),
                   label: Text(
-                    'View Ticket',
+                    'View Detail',
                     style: GoogleFonts.poppins(
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -425,27 +518,24 @@ class _BookingCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (_isOnline) ...[
-                const SizedBox(width: 10),
+              if (booking.canRetryPayment && booking.paymentId.isNotEmpty) ...<Widget>[
+                const SizedBox(width: 9),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _canOpenChat
-                        ? onOpenChat
-                        : () => _showCannotOpenChat(context),
-                    icon: Icon(_chatButtonIcon, size: 18),
+                    onPressed: () => _continuePayment(booking),
+                    icon: const Icon(Icons.payment_rounded, size: 18),
                     label: Text(
-                      _chatButtonText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      booking.paymentStatus == 'rejected'
+                          ? 'Upload Ulang'
+                          : 'Pay Now',
                       style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _chatButtonColor,
-                      foregroundColor: _chatButtonTextColor,
-                      disabledBackgroundColor: AppColors.textLight.withOpacity(0.18),
-                      disabledForegroundColor: AppColors.textMedium,
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -461,52 +551,58 @@ class _BookingCard extends StatelessWidget {
     );
   }
 
-  Widget _buildOnlineSessionInfo() {
-    String text;
-    IconData icon;
-    Color color;
-
-    if (!_isConfirmed) {
-      text = 'Belum dikonfirmasi. Buka ticket saat jadwal mulai untuk konfirmasi.';
-      icon = Icons.lock_outline_rounded;
-      color = AppColors.textMedium;
-    } else if (_isBeforeSession) {
-      text = 'Sudah confirmed, tetapi sesi chat belum dimulai.';
-      icon = Icons.lock_clock_rounded;
-      color = AppColors.textMedium;
-    } else if (_isSessionEnded) {
-      text = 'Sesi online sudah selesai. Room chat tidak bisa dibuka lagi.';
-      icon = Icons.event_busy_rounded;
-      color = AppColors.error;
-    } else {
-      text = 'Sesi sedang berlangsung. Kamu bisa membuka room chat.';
-      icon = Icons.check_circle_rounded;
-      color = AppColors.success;
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 17,
-            color: color,
+  Widget _infoRow(IconData icon, String text) {
+    return Row(
+      children: <Widget>[
+        Icon(icon, size: 15, color: AppColors.primary),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            text,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textDark,
+            ),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.poppins(
-                fontSize: 11,
-                color: color,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
-              ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      margin: const EdgeInsets.only(top: 50),
+      padding: const EdgeInsets.all(25),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: <Widget>[
+          const Icon(
+            Icons.receipt_long_outlined,
+            size: 54,
+            color: AppColors.textLight,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No bookings found',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _selectedFilter == 'all'
+                ? 'Kamu belum memiliki riwayat konsultasi.'
+                : 'Tidak ada booking pada kategori ini.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              color: AppColors.textMedium,
             ),
           ),
         ],
@@ -514,40 +610,73 @@ class _BookingCard extends StatelessWidget {
     );
   }
 
-  void _showCannotOpenChat(BuildContext context) {
-    String message;
-
-    if (!_isConfirmed) {
-      message =
-          'Konsultasi online belum dikonfirmasi. Buka View Ticket saat jadwal sudah mulai untuk konfirmasi.';
-    } else if (_isBeforeSession) {
-      message = 'Room chat belum bisa dibuka karena jadwal sesi belum dimulai.';
-    } else if (_isSessionEnded) {
-      message = 'Sesi konsultasi sudah selesai. Room chat tidak bisa dibuka lagi.';
-    } else {
-      message = 'Room chat belum bisa dibuka.';
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppColors.error,
+  Widget _buildErrorState() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: <Widget>[
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 50,
+            color: AppColors.error,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _errorMessage!,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              color: AppColors.textMedium,
+            ),
+          ),
+          const SizedBox(height: 15),
+          ElevatedButton.icon(
+            onPressed: _loadBookings,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Try Again'),
+          ),
+        ],
       ),
     );
   }
 
-  Color _statusColor(String status) {
+  Color _consultationStatusColor(String status) {
     switch (status) {
-      case 'Confirmed':
-        return AppColors.success;
-      case 'Pending':
+      case 'pending_payment':
         return const Color(0xFFD68A1F);
-      case 'Completed':
+      case 'waiting_verification':
         return AppColors.brandBlue;
-      case 'Cancelled':
+      case 'confirmed':
+      case 'ongoing':
+      case 'completed':
+        return AppColors.success;
+      case 'cancelled':
+      case 'expired':
         return AppColors.error;
       default:
         return AppColors.primary;
     }
+  }
+
+  String _formatCurrency(double value) {
+    final String number = value.toStringAsFixed(0);
+    final StringBuffer result = StringBuffer();
+
+    for (int index = 0; index < number.length; index++) {
+      if (index > 0 && (number.length - index) % 3 == 0) {
+        result.write('.');
+      }
+      result.write(number[index]);
+    }
+
+    return 'Rp$result';
+  }
+
+  String _cleanError(Object error) {
+    return error.toString().replaceFirst('Exception: ', '').trim();
   }
 }

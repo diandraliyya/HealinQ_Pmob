@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
+import '../../models/admin_consultation_model.dart';
+import '../../services/admin_consultation_service.dart';
 import '../../theme/app_theme.dart';
 
 class AdminConsultationScreen extends StatefulWidget {
@@ -12,279 +15,975 @@ class AdminConsultationScreen extends StatefulWidget {
 }
 
 class _AdminConsultationScreenState extends State<AdminConsultationScreen> {
+  final AdminConsultationService _service = AdminConsultationService();
   final TextEditingController _searchController = TextEditingController();
 
-  final List<_ConsultationItem> _consultations = [
-    _ConsultationItem(
-      id: 1,
-      user: 'Alya Putri',
-      counselor: 'Dr. Aulia Rahman',
-      amount: 75000,
-      date: 'Mar 28, 2026',
-      status: 'Paid',
-      method: 'E-Wallet',
-      sessionType: 'Chat Counseling',
-      reference: 'TRX-1001',
-      consultationStatus: 'Completed',
-    ),
-    _ConsultationItem(
-      id: 2,
-      user: 'Nadhif Ramadhan',
-      counselor: 'Dr. Nabila Putri',
-      amount: 100000,
-      date: 'Mar 27, 2026',
-      status: 'Pending',
-      method: 'Bank Transfer',
-      sessionType: 'Video Consultation',
-      reference: 'TRX-1002',
-      consultationStatus: 'Scheduled',
-    ),
-    _ConsultationItem(
-      id: 3,
-      user: 'Citra Maharani',
-      counselor: 'Dr. Farhan Yusuf',
-      amount: 85000,
-      date: 'Mar 26, 2026',
-      status: 'Failed',
-      method: 'E-Wallet',
-      sessionType: 'Voice Session',
-      reference: 'TRX-1003',
-      consultationStatus: 'Cancelled',
-    ),
-    _ConsultationItem(
-      id: 4,
-      user: 'Raka Pratama',
-      counselor: 'Dr. Keisha Amanda',
-      amount: 120000,
-      date: 'Mar 25, 2026',
-      status: 'Paid',
-      method: 'Credit Card',
-      sessionType: 'Video Consultation',
-      reference: 'TRX-1004',
-      consultationStatus: 'Completed',
-    ),
-    _ConsultationItem(
-      id: 5,
-      user: 'Salwa Nabila',
-      counselor: 'Dr. Salma Nadhira',
-      amount: 90000,
-      date: 'Mar 24, 2026',
-      status: 'Pending',
-      method: 'Bank Transfer',
-      sessionType: 'Chat Counseling',
-      reference: 'TRX-1005',
-      consultationStatus: 'Scheduled',
-    ),
-    _ConsultationItem(
-      id: 6,
-      user: 'Kevin Saputra',
-      counselor: 'Dr. Rafi Pradana',
-      amount: 110000,
-      date: 'Mar 23, 2026',
-      status: 'Paid',
-      method: 'Credit Card',
-      sessionType: 'Video Consultation',
-      reference: 'TRX-1006',
-      consultationStatus: 'Completed',
-    ),
-  ];
+  List<AdminConsultationModel> _items = <AdminConsultationModel>[];
+  bool _isLoading = true;
+  bool _isMutating = false;
+  String? _errorMessage;
+  String _selectedFilter = 'all';
+  String? _processingPaymentId;
 
-  String _selectedStatus = 'All';
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
 
-  List<_ConsultationItem> get _filteredConsultations {
-    final query = _searchController.text.trim().toLowerCase();
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
-    return _consultations.where((item) {
-      final matchesSearch =
-          item.user.toLowerCase().contains(query) ||
-          item.counselor.toLowerCase().contains(query) ||
-          item.reference.toLowerCase().contains(query) ||
-          item.method.toLowerCase().contains(query) ||
-          item.sessionType.toLowerCase().contains(query);
+  Future<void> _loadData({bool showLoading = true}) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
-      final matchesStatus =
-          _selectedStatus == 'All' ? true : item.status == _selectedStatus;
+    try {
+      final List<AdminConsultationModel> result =
+          await _service.getAllConsultations();
 
-      return matchesSearch && matchesStatus;
+      if (!mounted) return;
+
+      setState(() {
+        _items = result;
+        _errorMessage = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = _cleanError(error);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  List<AdminConsultationModel> get _visibleItems {
+    final String query = _searchController.text.trim().toLowerCase();
+
+    return _items.where((AdminConsultationModel item) {
+      final bool matchesSearch = query.isEmpty ||
+          item.userName.toLowerCase().contains(query) ||
+          item.userEmail.toLowerCase().contains(query) ||
+          item.counselorName.toLowerCase().contains(query) ||
+          item.bookingCode.toLowerCase().contains(query);
+
+      final bool matchesFilter;
+
+      switch (_selectedFilter) {
+        case 'waiting':
+          matchesFilter = item.paymentStatus == 'pending_verification';
+          break;
+        case 'paid':
+          matchesFilter = item.paymentStatus == 'paid';
+          break;
+        case 'rejected':
+          matchesFilter = item.paymentStatus == 'rejected';
+          break;
+        case 'unpaid':
+          matchesFilter = item.paymentStatus == 'unpaid';
+          break;
+        case 'all':
+        default:
+          matchesFilter = true;
+      }
+
+      return matchesSearch && matchesFilter;
     }).toList();
   }
 
-  int get _paidCount => _consultations.where((e) => e.status == 'Paid').length;
-  int get _pendingCount =>
-      _consultations.where((e) => e.status == 'Pending').length;
-  int get _failedCount =>
-      _consultations.where((e) => e.status == 'Failed').length;
+  int get _waitingCount => _items
+      .where(
+        (AdminConsultationModel item) =>
+            item.paymentStatus == 'pending_verification',
+      )
+      .length;
 
-  int get _totalRevenue => _consultations
-      .where((e) => e.status == 'Paid')
-      .fold(0, (sum, item) => sum + item.amount);
+  int get _paidCount => _items
+      .where(
+        (AdminConsultationModel item) => item.paymentStatus == 'paid',
+      )
+      .length;
 
-  String _formatCurrency(int value) {
-    final number = value.toString();
-    final buffer = StringBuffer();
-    int counter = 0;
+  int get _rejectedCount => _items
+      .where(
+        (AdminConsultationModel item) => item.paymentStatus == 'rejected',
+      )
+      .length;
 
-    for (int i = number.length - 1; i >= 0; i--) {
-      buffer.write(number[i]);
-      counter++;
-      if (counter % 3 == 0 && i != 0) {
-        buffer.write('.');
+  int get _unpaidCount => _items
+      .where(
+        (AdminConsultationModel item) => item.paymentStatus == 'unpaid',
+      )
+      .length;
+
+  double get _totalRevenue => _items
+      .where(
+        (AdminConsultationModel item) => item.paymentStatus == 'paid',
+      )
+      .fold<double>(
+        0,
+        (double total, AdminConsultationModel item) => total + item.amount,
+      );
+
+  Future<void> _approvePayment(AdminConsultationModel item) async {
+    if (_isMutating || item.paymentId.isEmpty) return;
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          title: Text(
+            'Approve Payment?',
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: Text(
+            'Pembayaran ${item.bookingCode} akan disetujui. '
+            'Status konsultasi berubah menjadi confirmed.',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              height: 1.55,
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.success,
+                foregroundColor: AppColors.white,
+              ),
+              child: const Text('Approve'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    await _runMutation(
+      paymentId: item.paymentId,
+      action: () => _service.approvePayment(item.paymentId),
+      successMessage: 'Pembayaran berhasil disetujui.',
+    );
+  }
+
+  Future<void> _rejectPayment(AdminConsultationModel item) async {
+    if (_isMutating || item.paymentId.isEmpty) return;
+
+    final TextEditingController reasonController = TextEditingController();
+
+    final String? reason = await showDialog<String>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          title: Text(
+            'Reject Payment',
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          content: TextField(
+            controller: reasonController,
+            maxLines: 4,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              labelText: 'Alasan penolakan',
+              hintText: 'Contoh: Bukti transfer tidak terbaca.',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final String value = reasonController.text.trim();
+                if (value.isNotEmpty) {
+                  Navigator.pop(dialogContext, value);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: AppColors.white,
+              ),
+              child: const Text('Reject'),
+            ),
+          ],
+        );
+      },
+    );
+
+    reasonController.dispose();
+
+    if (reason == null || !mounted) return;
+
+    await _runMutation(
+      paymentId: item.paymentId,
+      action: () => _service.rejectPayment(
+        paymentId: item.paymentId,
+        reason: reason,
+      ),
+      successMessage: 'Pembayaran ditolak. User dapat mengunggah ulang bukti.',
+    );
+  }
+
+  Future<void> _runMutation({
+    required String paymentId,
+    required Future<void> Function() action,
+    required String successMessage,
+  }) async {
+    setState(() {
+      _isMutating = true;
+      _processingPaymentId = paymentId;
+    });
+
+    try {
+      await action();
+      await _loadData(showLoading: false);
+
+      if (!mounted) return;
+
+      _showMessage(successMessage, isError: false);
+    } catch (error) {
+      if (!mounted) return;
+      _showMessage(_cleanError(error), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isMutating = false;
+          _processingPaymentId = null;
+        });
+      }
+    }
+  }
+
+  Future<void> _showDetail(AdminConsultationModel item) async {
+    String? proofUrl;
+    String? proofError;
+
+    if (item.proofPath != null && item.proofPath!.trim().isNotEmpty) {
+      try {
+        proofUrl = await _service.getPaymentProofUrl(item.proofPath);
+      } catch (error) {
+        proofError = _cleanError(error);
       }
     }
 
-    return 'Rp ${buffer.toString().split('').reversed.join()}';
-  }
+    if (!mounted) return;
 
-  Color _paymentBg(String status) {
-    switch (status) {
-      case 'Paid':
-        return const Color(0xFFDFF7EB);
-      case 'Pending':
-        return const Color(0xFFFFF0D9);
-      case 'Failed':
-        return const Color(0xFFFFE1EA);
-      default:
-        return AppColors.primarySoft;
-    }
-  }
-
-  Color _paymentText(String status) {
-    switch (status) {
-      case 'Paid':
-        return const Color(0xFF1F9D62);
-      case 'Pending':
-        return const Color(0xFFD68A1F);
-      case 'Failed':
-        return const Color(0xFFD64B7F);
-      default:
-        return AppColors.primary;
-    }
-  }
-
-  Color _consultationBg(String status) {
-    switch (status) {
-      case 'Completed':
-        return const Color(0xFFDFF1FF);
-      case 'Scheduled':
-        return const Color(0xFFF3E8FF);
-      case 'Cancelled':
-        return const Color(0xFFF3F3F3);
-      default:
-        return AppColors.primarySoft;
-    }
-  }
-
-  Color _consultationText(String status) {
-    switch (status) {
-      case 'Completed':
-        return AppColors.brandBlue;
-      case 'Scheduled':
-        return const Color(0xFF7B4DDB);
-      case 'Cancelled':
-        return AppColors.textMedium;
-      default:
-        return AppColors.primary;
-    }
-  }
-
-  void _showConsultationDetail(_ConsultationItem item) {
-    showModalBottomSheet(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          decoration: const BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Wrap(
-              children: [
-                Center(
-                  child: Container(
-                    width: 46,
-                    height: 5,
+      builder: (BuildContext sheetContext) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.88,
+          minChildSize: 0.55,
+          maxChildSize: 0.95,
+          builder: (
+            BuildContext context,
+            ScrollController scrollController,
+          ) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+              decoration: const BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+              ),
+              child: ListView(
+                controller: scrollController,
+                children: <Widget>[
+                  Center(
+                    child: Container(
+                      width: 46,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: AppColors.textLight.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Payment Verification',
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _detailBox('Booking Code', item.bookingCode),
+                  _detailBox('User', '${item.userName}\n${item.userEmail}'),
+                  _detailBox(
+                    'Counselor',
+                    '${item.counselorName}\n${item.specialization}',
+                  ),
+                  _detailBox(
+                    'Schedule',
+                    DateFormat('EEEE, d MMM yyyy • HH:mm').format(
+                      item.scheduledStart,
+                    ),
+                  ),
+                  _detailBox(
+                    'Consultation',
+                    '${item.consultationType.toUpperCase()} • '
+                    '${item.consultationStatusLabel}',
+                  ),
+                  _detailBox(
+                    'Payment',
+                    '${_formatCurrency(item.amount)} • '
+                    '${item.paymentStatusLabel}',
+                  ),
+                  _detailBox(
+                    'Method',
+                    item.paymentMethodName ?? '-',
+                  ),
+                  _detailBox(
+                    'Submitted At',
+                    item.submittedAt == null
+                        ? '-'
+                        : DateFormat('d MMM yyyy, HH:mm').format(
+                            item.submittedAt!,
+                          ),
+                  ),
+                  if (item.rejectionReason?.trim().isNotEmpty == true)
+                    _detailBox(
+                      'Rejection Reason',
+                      item.rejectionReason!,
+                    ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Payment Proof',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(minHeight: 180),
                     decoration: BoxDecoration(
-                      color: AppColors.textLight.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(20),
+                      color: AppColors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(18),
                     ),
+                    child: proofUrl != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: Image.network(
+                              proofUrl,
+                              fit: BoxFit.contain,
+                              loadingBuilder: (
+                                BuildContext context,
+                                Widget child,
+                                ImageChunkEvent? progress,
+                              ) {
+                                if (progress == null) return child;
+                                return const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(50),
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (_, __, ___) => _proofPlaceholder(
+                                'Bukti pembayaran gagal ditampilkan.',
+                              ),
+                            ),
+                          )
+                        : _proofPlaceholder(
+                            proofError ?? 'Bukti pembayaran belum tersedia.',
+                          ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  'Consultation Detail',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _detailTile('Reference', item.reference),
-                _detailTile('User', item.user),
-                _detailTile('Counselor', item.counselor),
-                _detailTile('Session Type', item.sessionType),
-                _detailTile('Payment Method', item.method),
-                _detailTile('Amount', _formatCurrency(item.amount)),
-                _detailTile('Date', item.date),
-                _detailTile('Payment Status', item.status),
-                _detailTile('Consultation Status', item.consultationStatus),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: AppColors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                  const SizedBox(height: 18),
+                  if (item.isWaitingVerification)
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isMutating
+                                ? null
+                                : () async {
+                                    Navigator.pop(sheetContext);
+                                    await _rejectPayment(item);
+                                  },
+                            icon: const Icon(Icons.close_rounded),
+                            label: const Text('Reject'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.error,
+                              side: const BorderSide(color: AppColors.error),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _isMutating
+                                ? null
+                                : () async {
+                                    Navigator.pop(sheetContext);
+                                    await _approvePayment(item);
+                                  },
+                            icon: const Icon(Icons.check_rounded),
+                            label: const Text('Approve'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.success,
+                              foregroundColor: AppColors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    child: Text(
-                      'Close',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
   }
 
-  Widget _detailTile(String label, String value) {
+  Widget _proofPlaceholder(String message) {
+    return Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          const Icon(
+            Icons.image_not_supported_outlined,
+            size: 46,
+            color: AppColors.textLight,
+          ),
+          const SizedBox(height: 9),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              color: AppColors.textMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMessage(
+    String message, {
+    required bool isError,
+  }) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor:
+              isError ? AppColors.error : AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.bgGradientStart,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          const _AdminConsultationBackground(),
+          SafeArea(
+            child: Column(
+              children: <Widget>[
+                _buildHeader(),
+                Expanded(
+                  child: RefreshIndicator(
+                    color: AppColors.primary,
+                    onRefresh: () => _loadData(showLoading: false),
+                    child: _buildContent(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'Consultation & Payment',
+                  style: GoogleFonts.poppins(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                  ),
+                ),
+                Text(
+                  'Review payment proofs and booking status.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: AppColors.textMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: _isLoading || _isMutating ? null : _loadData,
+            icon: const Icon(
+              Icons.refresh_rounded,
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const <Widget>[
+          SizedBox(height: 220),
+          Center(
+            child: CircularProgressIndicator(
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_errorMessage != null) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        children: <Widget>[
+          const SizedBox(height: 80),
+          _buildErrorState(),
+        ],
+      );
+    }
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 26),
+      children: <Widget>[
+        _buildStats(),
+        const SizedBox(height: 16),
+        _buildSearchAndFilter(),
+        const SizedBox(height: 16),
+        if (_visibleItems.isEmpty)
+          _buildEmptyState()
+        else
+          ..._visibleItems.map(_buildCard),
+      ],
+    );
+  }
+
+  Widget _buildStats() {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+      childAspectRatio: 1.35,
+      children: <Widget>[
+        _statCard(
+          'Revenue',
+          _formatCurrency(_totalRevenue),
+          Icons.payments_rounded,
+          AppColors.brandBlue,
+        ),
+        _statCard(
+          'Waiting',
+          '$_waitingCount',
+          Icons.hourglass_top_rounded,
+          const Color(0xFFD68A1F),
+        ),
+        _statCard(
+          'Paid',
+          '$_paidCount',
+          Icons.check_circle_rounded,
+          AppColors.success,
+        ),
+        _statCard(
+          'Rejected',
+          '$_rejectedCount',
+          Icons.cancel_rounded,
+          AppColors.error,
+        ),
+      ],
+    );
+  }
+
+  Widget _statCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: color.withOpacity(0.12),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.poppins(
+              fontSize: 19,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textDark,
+            ),
+          ),
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              color: AppColors.textMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchAndFilter() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        children: <Widget>[
+          TextField(
+            controller: _searchController,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: 'Search user, counselor, or booking code...',
+              prefixIcon: const Icon(Icons.search_rounded),
+              filled: true,
+              fillColor: AppColors.surfaceMuted,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: <Widget>[
+                _filterChip('all', 'All (${_items.length})'),
+                _filterChip('waiting', 'Waiting ($_waitingCount)'),
+                _filterChip('paid', 'Paid ($_paidCount)'),
+                _filterChip('rejected', 'Rejected ($_rejectedCount)'),
+                _filterChip(
+                  'unpaid',
+                  'Unpaid ($_unpaidCount)',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterChip(String value, String label) {
+    final bool selected = _selectedFilter == value;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        selected: selected,
+        onSelected: (_) {
+          setState(() {
+            _selectedFilter = value;
+          });
+        },
+        selectedColor: AppColors.primary,
+        backgroundColor: AppColors.primarySoft,
+        side: BorderSide.none,
+        label: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: selected ? AppColors.white : AppColors.primary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard(AdminConsultationModel item) {
+    final Color paymentColor = _paymentColor(item.paymentStatus);
+    final bool processing = _processingPaymentId == item.paymentId;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const CircleAvatar(
+                radius: 24,
+                backgroundColor: AppColors.primarySoft,
+                child: Icon(
+                  Icons.receipt_long_rounded,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      item.userName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    Text(
+                      '${item.counselorName} • ${item.bookingCode}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        color: AppColors.textMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 9,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: paymentColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  item.paymentStatusLabel,
+                  style: GoogleFonts.poppins(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: paymentColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(
+              color: AppColors.primarySoft,
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Column(
+              children: <Widget>[
+                _cardInfoRow(
+                  Icons.calendar_today_rounded,
+                  DateFormat('d MMM yyyy, HH:mm').format(
+                    item.scheduledStart,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                _cardInfoRow(
+                  Icons.payments_rounded,
+                  '${_formatCurrency(item.amount)} • '
+                  '${item.consultationStatusLabel}',
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 11),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: processing ? null : () => _showDetail(item),
+                  icon: const Icon(Icons.visibility_rounded, size: 18),
+                  label: Text(
+                    'View Detail',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                ),
+              ),
+              if (item.isWaitingVerification) ...<Widget>[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: processing ? null : () => _approvePayment(item),
+                    icon: processing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.white,
+                            ),
+                          )
+                        : const Icon(Icons.check_rounded, size: 18),
+                    label: Text(
+                      processing ? 'Processing' : 'Approve',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      foregroundColor: AppColors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cardInfoRow(IconData icon, String text) {
+    return Row(
+      children: <Widget>[
+        Icon(icon, size: 15, color: AppColors.primary),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            text,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textDark,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _detailBox(String label, String value) {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: AppColors.primarySoft,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children: <Widget>[
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 12,
+              fontSize: 10,
               color: AppColors.textMedium,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             value,
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppColors.textDark,
             ),
@@ -294,470 +993,101 @@ class _AdminConsultationScreenState extends State<AdminConsultationScreen> {
     );
   }
 
-  Widget _buildStatCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
+  Widget _buildEmptyState() {
     return Container(
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(top: 45),
+      padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
-        color: AppColors.white.withOpacity(0.92),
-        borderRadius: BorderRadius.circular(20),
+        color: AppColors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: color.withOpacity(0.12),
-            child: Icon(icon, color: color, size: 20),
+        children: <Widget>[
+          const Icon(
+            Icons.search_off_rounded,
+            size: 50,
+            color: AppColors.textLight,
           ),
-          const Spacer(),
+          const SizedBox(height: 10),
           Text(
-            value,
+            'No consultation found',
             style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
               color: AppColors.textDark,
             ),
           ),
-          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: <Widget>[
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 50,
+            color: AppColors.error,
+          ),
+          const SizedBox(height: 12),
           Text(
-            title,
+            _errorMessage!,
+            textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
-              fontSize: 12,
+              fontSize: 11,
               color: AppColors.textMedium,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.bgGradientStart,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          const _AdminConsultationBackground(),
-          SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Consultation History',
-                          style: GoogleFonts.poppins(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    children: [
-                      Text(
-                        'Track consultations, bookings, and payment status in one place',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: AppColors.textMedium,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      GridView.count(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                        childAspectRatio: 1.22,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        children: [
-                          _buildStatCard(
-                            title: 'Total Revenue',
-                            value: _formatCurrency(_totalRevenue),
-                            icon: Icons.payments_rounded,
-                            color: AppColors.brandBlue,
-                          ),
-                          _buildStatCard(
-                            title: 'Paid',
-                            value: '$_paidCount',
-                            icon: Icons.check_circle_rounded,
-                            color: AppColors.success,
-                          ),
-                          _buildStatCard(
-                            title: 'Pending',
-                            value: '$_pendingCount',
-                            icon: Icons.hourglass_top_rounded,
-                            color: const Color(0xFFD68A1F),
-                          ),
-                          _buildStatCard(
-                            title: 'Failed',
-                            value: '$_failedCount',
-                            icon: Icons.error_rounded,
-                            color: AppColors.error,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.white.withOpacity(0.92),
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        child: Column(
-                          children: [
-                            TextField(
-                              controller: _searchController,
-                              onChanged: (_) => setState(() {}),
-                              style: GoogleFonts.poppins(fontSize: 14),
-                              decoration: InputDecoration(
-                                hintText:
-                                    'Search user, counselor, reference, or session...',
-                                prefixIcon: const Icon(Icons.search_rounded),
-                                filled: true,
-                                fillColor: AppColors.surfaceMuted,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(18),
-                                  borderSide: BorderSide.none,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              height: 40,
-                              child: ListView(
-                                scrollDirection: Axis.horizontal,
-                                children: [
-                                  _FilterChipItem(
-                                    label: 'All',
-                                    selected: _selectedStatus == 'All',
-                                    onTap: () =>
-                                        setState(() => _selectedStatus = 'All'),
-                                  ),
-                                  _FilterChipItem(
-                                    label: 'Paid',
-                                    selected: _selectedStatus == 'Paid',
-                                    onTap: () => setState(
-                                      () => _selectedStatus = 'Paid',
-                                    ),
-                                  ),
-                                  _FilterChipItem(
-                                    label: 'Pending',
-                                    selected: _selectedStatus == 'Pending',
-                                    onTap: () => setState(
-                                      () => _selectedStatus = 'Pending',
-                                    ),
-                                  ),
-                                  _FilterChipItem(
-                                    label: 'Failed',
-                                    selected: _selectedStatus == 'Failed',
-                                    onTap: () => setState(
-                                      () => _selectedStatus = 'Failed',
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      ..._filteredConsultations.map(
-                        (item) => Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: AppColors.white.withOpacity(0.94),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.04),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  const CircleAvatar(
-                                    radius: 22,
-                                    backgroundColor: AppColors.primarySoft,
-                                    child: Icon(
-                                      Icons.receipt_long_rounded,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item.user,
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w700,
-                                            color: AppColors.textDark,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          '${item.counselor} • ${item.reference}',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 12,
-                                            color: AppColors.textMedium,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _paymentBg(item.status),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: Text(
-                                      item.status,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: _paymentText(item.status),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.video_call_rounded,
-                                    size: 16,
-                                    color: AppColors.textMedium,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      item.sessionType,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 12,
-                                        color: AppColors.textMedium,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.payments_outlined,
-                                    size: 16,
-                                    color: AppColors.textMedium,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      item.method,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 12,
-                                        color: AppColors.textMedium,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    _formatCurrency(item.amount),
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.calendar_today_rounded,
-                                    size: 14,
-                                    color: AppColors.textMedium,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    item.date,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12,
-                                      color: AppColors.textMedium,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _consultationBg(
-                                        item.consultationStatus,
-                                      ),
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: Text(
-                                      item.consultationStatus,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: _consultationText(
-                                          item.consultationStatus,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton(
-                                  onPressed: () => _showConsultationDetail(item),
-                                  child: Text(
-                                    'View Detail',
-                                    style: GoogleFonts.poppins(
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (_filteredConsultations.isEmpty)
-                        Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: AppColors.white.withOpacity(0.92),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Column(
-                            children: [
-                              const Icon(
-                                Icons.search_off_rounded,
-                                size: 48,
-                                color: AppColors.textLight,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'No consultations found',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textDark,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: 15),
+          ElevatedButton.icon(
+            onPressed: _loadData,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Try Again'),
           ),
         ],
       ),
     );
   }
-}
 
-class _ConsultationItem {
-  final int id;
-  final String user;
-  final String counselor;
-  final int amount;
-  final String date;
-  final String status;
-  final String method;
-  final String sessionType;
-  final String reference;
-  final String consultationStatus;
+  Color _paymentColor(String status) {
+    switch (status) {
+      case 'pending_verification':
+        return const Color(0xFFD68A1F);
+      case 'paid':
+        return AppColors.success;
+      case 'rejected':
+      case 'expired':
+        return AppColors.error;
+      case 'unpaid':
+        return AppColors.textMedium;
+      default:
+        return AppColors.primary;
+    }
+  }
 
-  _ConsultationItem({
-    required this.id,
-    required this.user,
-    required this.counselor,
-    required this.amount,
-    required this.date,
-    required this.status,
-    required this.method,
-    required this.sessionType,
-    required this.reference,
-    required this.consultationStatus,
-  });
-}
+  String _formatCurrency(double value) {
+    final String number = value.toStringAsFixed(0);
+    final StringBuffer result = StringBuffer();
 
-class _FilterChipItem extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+    for (int index = 0; index < number.length; index++) {
+      if (index > 0 && (number.length - index) % 3 == 0) {
+        result.write('.');
+      }
+      result.write(number[index]);
+    }
 
-  const _FilterChipItem({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+    return 'Rp$result';
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: selected ? AppColors.white : AppColors.primary,
-          ),
-        ),
-        selected: selected,
-        onSelected: (_) => onTap(),
-        selectedColor: AppColors.primary,
-        backgroundColor: AppColors.primarySoft,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide.none,
-        ),
-      ),
-    );
+  String _cleanError(Object error) {
+    return error.toString().replaceFirst('Exception: ', '').trim();
   }
 }
 
@@ -768,48 +1098,41 @@ class _AdminConsultationBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Stack(
       fit: StackFit.expand,
-      children: [
-        _AdminConsultationBlob(
+      children: <Widget>[
+        _AdminBlob(
           alignment: Alignment.topLeft,
           widthFactor: 0.78,
           heightFactor: 0.28,
           color: AppColors.blobPink,
           opacity: 0.95,
         ),
-        _AdminConsultationBlob(
+        _AdminBlob(
           alignment: Alignment.topRight,
           widthFactor: 0.82,
           heightFactor: 0.30,
           color: AppColors.blobTeal,
           opacity: 0.34,
         ),
-        _AdminConsultationBlob(
+        _AdminBlob(
           alignment: Alignment.centerLeft,
           widthFactor: 1.02,
           heightFactor: 0.56,
           color: AppColors.blobBlue,
           opacity: 0.28,
         ),
-        _AdminConsultationBlob(
-          alignment: Alignment.bottomRight,
-          widthFactor: 0.60,
-          heightFactor: 0.22,
-          color: AppColors.blobPink,
-          opacity: 0.30,
-        ),
       ],
     );
   }
 }
 
-class _AdminConsultationBlob extends StatelessWidget {
+class _AdminBlob extends StatelessWidget {
   final Alignment alignment;
   final double widthFactor;
   final double heightFactor;
   final Color color;
   final double opacity;
 
-  const _AdminConsultationBlob({
+  const _AdminBlob({
     required this.alignment,
     required this.widthFactor,
     required this.heightFactor,
@@ -819,7 +1142,7 @@ class _AdminConsultationBlob extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final Size size = MediaQuery.of(context).size;
 
     return Align(
       alignment: alignment,
@@ -830,7 +1153,7 @@ class _AdminConsultationBlob extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
-              colors: [
+              colors: <Color>[
                 color.withOpacity(opacity),
                 color.withOpacity(0),
               ],

@@ -13,13 +13,9 @@ class PaymentService {
           .eq('is_active', true)
           .order('created_at');
 
-      return List<Map<String, dynamic>>.from(
-        response,
-      );
-    } on PostgrestException catch (e) {
-      throw Exception(
-        e.message,
-      );
+      return List<Map<String, dynamic>>.from(response);
+    } on PostgrestException catch (error) {
+      throw Exception(error.message);
     }
   }
 
@@ -27,48 +23,111 @@ class PaymentService {
     required String paymentId,
     required File file,
   }) async {
+    final User? user = _client.auth.currentUser;
+
+    if (user == null) {
+      throw Exception(
+        'Sesi login tidak ditemukan. Silakan login kembali.',
+      );
+    }
+
     try {
-      final String userId = _client.auth.currentUser!.id;
+      final String extension =
+          file.path.split('.').last.toLowerCase();
 
-      final String extension = file.path.split('.').last;
+      final String contentType;
 
-      final String path = '$userId/$paymentId.$extension';
+      switch (extension) {
+        case 'jpg':
+        case 'jpeg':
+          contentType = 'image/jpeg';
+          break;
+        case 'png':
+          contentType = 'image/png';
+          break;
+        case 'webp':
+          contentType = 'image/webp';
+          break;
+        default:
+          throw Exception(
+            'Format bukti pembayaran tidak didukung.',
+          );
+      }
+
+      final String path =
+          '${user.id}/$paymentId/${DateTime.now().millisecondsSinceEpoch}.$extension';
 
       await _client.storage.from('payment-proofs').upload(
             path,
             file,
-            fileOptions: const FileOptions(
-              upsert: true,
+            fileOptions: FileOptions(
+              upsert: false,
+              contentType: contentType,
             ),
           );
 
       return path;
-    } on StorageException catch (e) {
-      throw Exception(
-        e.message,
-      );
+    } on StorageException catch (error) {
+      throw Exception(error.message);
     }
   }
 
   Future<void> submitPayment({
-    required String paymentId,
+    required String consultationId,
     required String proofPath,
     required String methodId,
   }) async {
-    try {
-      await _client.from('payments').update({
-        'method_id': methodId,
-        'proof_path': proofPath,
-        'status': 'pending_verification',
-        'submitted_at': DateTime.now().toUtc().toIso8601String(),
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq(
-        'id',
-        paymentId,
-      );
-    } on PostgrestException catch (e) {
+    if (_client.auth.currentSession == null) {
       throw Exception(
-        e.message,
+        'Sesi login tidak ditemukan. Silakan login kembali.',
+      );
+    }
+
+    try {
+      await _client.rpc(
+        'submit_payment_proof',
+        params: <String, dynamic>{
+          'p_consultation_id': consultationId,
+          'p_method_id': methodId,
+          'p_proof_path': proofPath,
+        },
+      );
+    } on PostgrestException catch (error) {
+      final String message =
+          '${error.code ?? ''} ${error.message} ${error.details ?? ''}'
+              .toLowerCase();
+
+      if (message.contains('payment cannot be submitted')) {
+        throw Exception(
+          'Pembayaran ini tidak dapat dikirim. '
+          'Statusnya mungkin sudah berubah.',
+        );
+      }
+
+      if (message.contains('payment method is not active')) {
+        throw Exception(
+          'Metode pembayaran sudah tidak aktif.',
+        );
+      }
+
+      if (message.contains('invalid payment proof path')) {
+        throw Exception(
+          'Path bukti pembayaran tidak valid.',
+        );
+      }
+
+      if (message.contains('42501') ||
+          message.contains('permission denied') ||
+          message.contains('row-level security')) {
+        throw Exception(
+          'Kamu tidak memiliki izin untuk mengirim bukti pembayaran.',
+        );
+      }
+
+      throw Exception(
+        error.message.trim().isEmpty
+            ? 'Gagal mengirim bukti pembayaran.'
+            : error.message.trim(),
       );
     }
   }
@@ -90,19 +149,12 @@ class PaymentService {
                   instructions
                 )
               ''')
-          .eq(
-            'id',
-            paymentId,
-          )
+          .eq('id', paymentId)
           .single();
 
-      return Map<String, dynamic>.from(
-        response,
-      );
-    } on PostgrestException catch (e) {
-      throw Exception(
-        e.message,
-      );
+      return Map<String, dynamic>.from(response);
+    } on PostgrestException catch (error) {
+      throw Exception(error.message);
     }
   }
 }
