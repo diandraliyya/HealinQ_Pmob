@@ -192,7 +192,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
 
       await _paymentService.submitPayment(
-        paymentId: widget.paymentId,
+        consultationId: widget.consultationId,
         proofPath: proofPath,
         methodId: selectedMethod['id'].toString(),
       );
