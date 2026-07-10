@@ -6,6 +6,11 @@ import '../../models/admin_consultation_model.dart';
 import '../../services/admin_consultation_service.dart';
 import '../../theme/app_theme.dart';
 
+enum _PaymentReviewAction {
+  approve,
+  reject,
+}
+
 class AdminConsultationScreen extends StatefulWidget {
   const AdminConsultationScreen({super.key});
 
@@ -189,68 +194,114 @@ class _AdminConsultationScreenState extends State<AdminConsultationScreen> {
     );
   }
 
-  Future<void> _rejectPayment(AdminConsultationModel item) async {
-    if (_isMutating || item.paymentId.isEmpty) return;
+  Future<void> _rejectPayment(
+    AdminConsultationModel item,
+  ) async {
+    if (_isMutating || item.paymentId.isEmpty) {
+      return;
+    }
 
-    final TextEditingController reasonController = TextEditingController();
+    String rejectionReason = '';
 
-    final String? reason = await showDialog<String>(
+    final String? reason =
+        await showDialog<String>(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(22),
-          ),
-          title: Text(
-            'Reject Payment',
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          content: TextField(
-            controller: reasonController,
-            maxLines: 4,
-            maxLength: 500,
-            decoration: const InputDecoration(
-              labelText: 'Alasan penolakan',
-              hintText: 'Contoh: Bukti transfer tidak terbaca.',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final String value = reasonController.text.trim();
-                if (value.isNotEmpty) {
-                  Navigator.pop(dialogContext, value);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: AppColors.white,
+      builder: (
+        BuildContext dialogContext,
+      ) {
+        return StatefulBuilder(
+          builder: (
+            BuildContext context,
+            void Function(
+              void Function(),
+            ) setDialogState,
+          ) {
+            final bool canSubmit =
+                rejectionReason.trim().isNotEmpty;
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(22),
               ),
-              child: const Text('Reject'),
-            ),
-          ],
+              title: Text(
+                'Reject Payment',
+                style: GoogleFonts.poppins(
+                  fontWeight:
+                      FontWeight.w700,
+                ),
+              ),
+              content: TextField(
+                autofocus: true,
+                maxLines: 4,
+                maxLength: 500,
+                onChanged: (String value) {
+                  rejectionReason = value;
+
+                  setDialogState(() {});
+                },
+                decoration:
+                    const InputDecoration(
+                  labelText:
+                      'Alasan penolakan',
+                  hintText:
+                      'Contoh: Bukti transfer tidak terbaca.',
+                  border:
+                      OutlineInputBorder(),
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(
+                      dialogContext,
+                    ).pop();
+                  },
+                  child:
+                      const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: canSubmit
+                      ? () {
+                          Navigator.of(
+                            dialogContext,
+                          ).pop(
+                            rejectionReason
+                                .trim(),
+                          );
+                        }
+                      : null,
+                  style: ElevatedButton
+                      .styleFrom(
+                    backgroundColor:
+                        AppColors.error,
+                    foregroundColor:
+                        AppColors.white,
+                  ),
+                  child:
+                      const Text('Reject'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
-    reasonController.dispose();
-
-    if (reason == null || !mounted) return;
+    if (reason == null || !mounted) {
+      return;
+    }
 
     await _runMutation(
       paymentId: item.paymentId,
-      action: () => _service.rejectPayment(
+      action: () =>
+          _service.rejectPayment(
         paymentId: item.paymentId,
         reason: reason,
       ),
-      successMessage: 'Pembayaran ditolak. User dapat mengunggah ulang bukti.',
+      successMessage:
+          'Pembayaran ditolak. '
+          'User dapat mengunggah ulang bukti.',
     );
   }
 
@@ -298,7 +349,8 @@ class _AdminConsultationScreenState extends State<AdminConsultationScreen> {
 
     if (!mounted) return;
 
-    await showModalBottomSheet<void>(
+    final _PaymentReviewAction? action =
+        await showModalBottomSheet<_PaymentReviewAction>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -359,6 +411,15 @@ class _AdminConsultationScreenState extends State<AdminConsultationScreen> {
                     '${item.consultationType.toUpperCase()} • '
                     '${item.consultationStatusLabel}',
                   ),
+                  if (item.isOffline)
+                    _detailBox('User Confirmation', item.userConfirmationLabel),
+                  if (item.isOffline)
+                    _detailBox(
+                      'Actual Attendance',
+                      item.attendanceMarkedAt == null
+                          ? item.actualAttendanceLabel
+                          : '${item.actualAttendanceLabel} • ${DateFormat('d MMM yyyy, HH:mm').format(item.attendanceMarkedAt!)}',
+                    ),
                   _detailBox(
                     'Payment',
                     '${_formatCurrency(item.amount)} • '
@@ -434,9 +495,13 @@ class _AdminConsultationScreenState extends State<AdminConsultationScreen> {
                           child: OutlinedButton.icon(
                             onPressed: _isMutating
                                 ? null
-                                : () async {
-                                    Navigator.pop(sheetContext);
-                                    await _rejectPayment(item);
+                                : () {
+                                    Navigator.of(
+                                      sheetContext,
+                                    ).pop(
+                                      _PaymentReviewAction
+                                          .reject,
+                                    );
                                   },
                             icon: const Icon(Icons.close_rounded),
                             label: const Text('Reject'),
@@ -452,9 +517,13 @@ class _AdminConsultationScreenState extends State<AdminConsultationScreen> {
                           child: ElevatedButton.icon(
                             onPressed: _isMutating
                                 ? null
-                                : () async {
-                                    Navigator.pop(sheetContext);
-                                    await _approvePayment(item);
+                                : () {
+                                    Navigator.of(
+                                      sheetContext,
+                                    ).pop(
+                                      _PaymentReviewAction
+                                          .approve,
+                                    );
                                   },
                             icon: const Icon(Icons.check_rounded),
                             label: const Text('Approve'),
@@ -474,6 +543,30 @@ class _AdminConsultationScreenState extends State<AdminConsultationScreen> {
         );
       },
     );
+
+    if (!mounted || action == null) {
+      return;
+    }
+
+    /*
+     * showModalBottomSheet selesai lebih dulu.
+     * Baru setelah route sheet benar-benar tertutup,
+     * dialog approve/reject dibuka.
+     */
+    await Future<void>.delayed(
+      Duration.zero,
+    );
+
+    if (!mounted) return;
+
+    switch (action) {
+      case _PaymentReviewAction.approve:
+        await _approvePayment(item);
+        break;
+      case _PaymentReviewAction.reject:
+        await _rejectPayment(item);
+        break;
+    }
   }
 
   Widget _proofPlaceholder(String message) {

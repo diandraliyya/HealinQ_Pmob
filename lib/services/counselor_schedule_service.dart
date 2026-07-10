@@ -21,6 +21,9 @@ class CounselorScheduleService {
     final User user = _requireUser();
 
     try {
+      await _expireStaleBookingsQuietly();
+      await _syncOfflineStatusesQuietly();
+
       final Map<String, dynamic> profile =
           Map<String, dynamic>.from(
         await _client
@@ -62,8 +65,9 @@ class CounselorScheduleService {
             'id, booking_code, user_id, counselor_id, slot_id, '
             'consultation_type, scheduled_start, scheduled_end, '
             'amount, notes, status, attendance_status, '
-            'confirmed_at, attendance_confirmed_at, completed_at, '
-            'cancelled_at, cancellation_reason, created_at, updated_at',
+            'confirmed_at, attendance_confirmed_at, attendance_marked_at, '
+            'attendance_marked_by, completed_at, cancelled_at, '
+            'cancellation_reason, created_at, updated_at',
           )
           .eq('counselor_id', user.id)
           .order('created_at', ascending: false);
@@ -112,6 +116,17 @@ class CounselorScheduleService {
                     consultationIds,
                   );
 
+      final List<dynamic> clientRows =
+          consultationIds.isEmpty
+              ? <dynamic>[]
+              : await _client.rpc(
+                  'get_my_consultation_clients',
+                  params: <String, dynamic>{
+                    'p_consultation_ids':
+                        consultationIds,
+                  },
+                );
+
       final Map<String, Map<String, dynamic>>
           paymentByConsultation =
           <String, Map<String, dynamic>>{};
@@ -125,6 +140,22 @@ class CounselorScheduleService {
 
         if (consultationId.isNotEmpty) {
           paymentByConsultation[consultationId] = payment;
+        }
+      }
+
+      final Map<String, Map<String, dynamic>>
+          clientByConsultation =
+          <String, Map<String, dynamic>>{};
+
+      for (final dynamic raw in clientRows) {
+        final Map<String, dynamic> client =
+            Map<String, dynamic>.from(raw as Map);
+
+        final String consultationId =
+            client['consultation_id']?.toString() ?? '';
+
+        if (consultationId.isNotEmpty) {
+          clientByConsultation[consultationId] = client;
         }
       }
 
@@ -147,6 +178,8 @@ class CounselorScheduleService {
             slot: slot,
             consultation: consultation,
             payment: paymentByConsultation[consultationId],
+            clientProfile:
+                clientByConsultation[consultationId],
           );
         },
       ).toList();
@@ -237,25 +270,43 @@ class CounselorScheduleService {
     }
   }
 
-  Future<void> deleteSlot(String slotId) async {
-    final User user = _requireUser();
+  Future<String> deleteSlot(String slotId) async {
+    _requireUser();
 
     try {
-      final List<dynamic> rows = await _client
-          .from('counselor_slots')
-          .delete()
-          .eq('id', slotId)
-          .eq('counselor_id', user.id)
-          .eq('status', 'available')
-          .select('id');
+      final dynamic result = await _client.rpc(
+        'remove_counselor_slot',
+        params: <String, dynamic>{'p_slot_id': slotId},
+      );
 
-      if (rows.isEmpty) {
-        throw Exception(
-          'Slot sudah berubah atau tidak lagi tersedia untuk dihapus.',
-        );
-      }
-
+      final Map<String, dynamic> data = Map<String, dynamic>.from(result as Map);
       await syncAvailability();
+      return data['action']?.toString() ?? 'deleted';
+    } on PostgrestException catch (error) {
+      throw Exception(_translateError(error));
+    } catch (error) {
+      throw Exception(_cleanError(error.toString()));
+    }
+  }
+
+  Future<void> markOfflineAttendance({
+    required String consultationId,
+    required String result,
+  }) async {
+    _requireUser();
+
+    if (result != 'attended' && result != 'absent') {
+      throw Exception('Hasil attendance tidak valid.');
+    }
+
+    try {
+      await _client.rpc(
+        'mark_offline_attendance',
+        params: <String, dynamic>{
+          'p_consultation_id': consultationId,
+          'p_result': result,
+        },
+      );
     } on PostgrestException catch (error) {
       throw Exception(_translateError(error));
     } catch (error) {
@@ -292,6 +343,25 @@ class CounselorScheduleService {
     }
   }
 
+  Future<void> _syncOfflineStatusesQuietly() async {
+    try {
+      await _client.rpc('sync_offline_consultation_statuses');
+    } catch (_) {
+      // pg_cron tetap menjadi jalur utama.
+    }
+  }
+
+  Future<void> _expireStaleBookingsQuietly() async {
+    try {
+      await _client.rpc(
+        'expire_stale_consultation_bookings',
+        params: <String, dynamic>{'p_limit': 200},
+      );
+    } catch (_) {
+      // pg_cron tetap menjadi jalur utama.
+    }
+  }
+
   String _translateError(PostgrestException error) {
     final String message =
         '${error.code ?? ''} '
@@ -306,6 +376,26 @@ class CounselorScheduleService {
         )) {
       return 'Jadwal bertabrakan dengan slot lain yang '
           'sudah tersedia atau sudah dicadangkan.';
+    }
+
+    if (message.contains('mark attended baru aktif 30 menit sebelum jadwal')) {
+      return 'Mark Attended baru aktif mulai 30 menit sebelum jadwal.';
+    }
+
+    if (message.contains('did not attend baru dapat dipilih setelah sesi selesai')) {
+      return 'Did Not Attend baru dapat dipilih setelah jadwal konsultasi selesai.';
+    }
+
+    if (message.contains('attendance aktual sudah final')) {
+      return 'Attendance aktual sudah dicatat dan tidak dapat diubah.';
+    }
+
+    if (message.contains('pembayaran konsultasi belum lunas')) {
+      return 'Pembayaran konsultasi belum berstatus lunas.';
+    }
+
+    if (message.contains('konsultasi offline tidak dapat ditandai pada status ini')) {
+      return 'Status konsultasi tidak dapat diubah untuk attendance saat ini.';
     }
 
     if (message.contains('42501') ||

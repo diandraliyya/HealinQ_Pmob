@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../models/booking_model.dart';
 import '../../services/booking_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/counselor_review_dialog.dart';
+import '../chat/room_chat_screen.dart';
 import 'booking_ticket_screen.dart';
 import 'payment_screen.dart';
 
@@ -103,6 +105,76 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
     if (mounted) {
       await _loadBookings(showLoading: false);
     }
+  }
+
+  Future<void> _openChat(BookingModel booking) async {
+    final String? roomId = booking.chatRoomId;
+
+    if (roomId == null || roomId.isEmpty) return;
+
+    if (DateTime.now().isBefore(booking.scheduledStart)) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'Room chat aktif pada '
+              '${DateFormat('d MMM yyyy, HH:mm').format(booking.scheduledStart)}.',
+            ),
+            backgroundColor: AppColors.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RoomChatScreen(roomId: roomId),
+      ),
+    );
+
+    if (mounted) {
+      await _loadBookings(showLoading: false);
+    }
+  }
+
+  Future<void> _openReviewDialog(
+    BookingModel booking,
+  ) async {
+    final bool? submitted =
+        await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          CounselorReviewDialog(
+        booking: booking,
+      ),
+    );
+
+    if (submitted != true || !mounted) {
+      return;
+    }
+
+    await _loadBookings(
+      showLoading: false,
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Terima kasih! Rating counselor berhasil dikirim.',
+          ),
+          backgroundColor:
+              AppColors.success,
+          behavior:
+              SnackBarBehavior.floating,
+        ),
+      );
   }
 
   Future<void> _continuePayment(BookingModel booking) async {
@@ -469,6 +541,13 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
                   Icons.payments_rounded,
                   '${_formatCurrency(booking.amount)} • ${booking.paymentStatusLabel}',
                 ),
+                if (booking.isOffline) ...<Widget>[
+                  const SizedBox(height: 7),
+                  _infoRow(
+                    Icons.how_to_reg_rounded,
+                    '${booking.userConfirmationLabel} • ${booking.actualAttendanceLabel}',
+                  ),
+                ],
               ],
             ),
           ),
@@ -544,8 +623,149 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
                   ),
                 ),
               ],
+              if (booking.isOnline &&
+                  booking.paymentStatus == 'paid' &&
+                  booking.chatRoomId != null &&
+                  booking.chatRoomId!.isNotEmpty &&
+                  (booking.consultationStatus == 'confirmed' ||
+                      booking.consultationStatus == 'ongoing' ||
+                      booking.consultationStatus == 'completed')) ...<Widget>[
+                const SizedBox(width: 9),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _openChat(booking),
+                    icon: Icon(
+                      DateTime.now().isBefore(booking.scheduledStart)
+                          ? Icons.lock_clock_rounded
+                          : DateTime.now().isBefore(booking.scheduledEnd)
+                              ? Icons.chat_bubble_rounded
+                              : Icons.history_rounded,
+                      size: 18,
+                    ),
+                    label: Text(
+                      DateTime.now().isBefore(booking.scheduledStart)
+                          ? 'Chat Later'
+                          : DateTime.now().isBefore(booking.scheduledEnd)
+                              ? 'Open Chat'
+                              : 'History',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
+          if (booking.canReviewCounselor) ...<Widget>[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  _openReviewDialog(
+                    booking,
+                  );
+                },
+                icon: const Icon(
+                  Icons.star_rounded,
+                  size: 19,
+                ),
+                label: Text(
+                  'Rate Counselor',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+                style:
+                    ElevatedButton.styleFrom(
+                  backgroundColor:
+                      AppColors.starYellow,
+                  foregroundColor:
+                      AppColors.textDark,
+                  elevation: 0,
+                  shape:
+                      RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(
+                      16,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (booking.hasReview) ...<Widget>[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.starYellow
+                    .withOpacity(0.10),
+                borderRadius:
+                    BorderRadius.circular(15),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Row(
+                    children:
+                        List<Widget>.generate(
+                      5,
+                      (int index) => Icon(
+                        index <
+                                (booking
+                                        .reviewRating ??
+                                    0)
+                            ? Icons
+                                .star_rounded
+                            : Icons
+                                .star_border_rounded,
+                        color:
+                            AppColors.starYellow,
+                        size: 17,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Review sudah dikirim',
+                      style:
+                          GoogleFonts.poppins(
+                        fontSize: 10,
+                        fontWeight:
+                            FontWeight.w600,
+                        color:
+                            AppColors.textDark,
+                      ),
+                    ),
+                  ),
+                  const Icon(
+                    Icons.verified_rounded,
+                    size: 18,
+                    color:
+                        AppColors.success,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

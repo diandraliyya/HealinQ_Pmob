@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
+import '../../models/chat_room_model.dart';
+import '../../services/chat_service.dart';
 import '../../theme/app_theme.dart';
+import '../chat/room_chat_screen.dart';
 
 class CounselorChatListScreen extends StatefulWidget {
   const CounselorChatListScreen({super.key});
@@ -11,58 +15,19 @@ class CounselorChatListScreen extends StatefulWidget {
       _CounselorChatListScreenState();
 }
 
-class _CounselorChatListScreenState extends State<CounselorChatListScreen> {
+class _CounselorChatListScreenState
+    extends State<CounselorChatListScreen> {
+  final ChatService _service = ChatService();
   final TextEditingController _searchController = TextEditingController();
 
-  final List<_CounselorChatItem> _chatItems = const [
-    _CounselorChatItem(
-      id: 1,
-      userName: 'Alya Putri',
-      lastMessage: 'Dok, saya akhir-akhir ini sering merasa cemas.',
-      time: '08:10',
-      unreadCount: 2,
-      status: 'Online',
-      topic: 'Anxiety',
-    ),
-    _CounselorChatItem(
-      id: 2,
-      userName: 'Nadhif Ramadhan',
-      lastMessage: 'Saya ingin konsultasi tentang stress kuliah.',
-      time: '09:25',
-      unreadCount: 1,
-      status: 'Online',
-      topic: 'Stress Management',
-    ),
-    _CounselorChatItem(
-      id: 3,
-      userName: 'Citra Maharani',
-      lastMessage: 'Terima kasih dok, saya akan coba sarannya.',
-      time: 'Yesterday',
-      unreadCount: 0,
-      status: 'Offline',
-      topic: 'Self-Esteem',
-    ),
-    _CounselorChatItem(
-      id: 4,
-      userName: 'Raka Pratama',
-      lastMessage: 'Apakah saya bisa jadwalkan sesi lanjutan?',
-      time: 'Yesterday',
-      unreadCount: 0,
-      status: 'Offline',
-      topic: 'Career Confusion',
-    ),
-  ];
+  List<ChatRoomModel> _rooms = <ChatRoomModel>[];
+  bool _isLoading = true;
+  String? _errorMessage;
 
-  List<_CounselorChatItem> get _filteredChats {
-    final query = _searchController.text.trim().toLowerCase();
-
-    if (query.isEmpty) return _chatItems;
-
-    return _chatItems.where((chat) {
-      return chat.userName.toLowerCase().contains(query) ||
-          chat.lastMessage.toLowerCase().contains(query) ||
-          chat.topic.toLowerCase().contains(query);
-    }).toList();
+  @override
+  void initState() {
+    super.initState();
+    _loadRooms();
   }
 
   @override
@@ -71,12 +36,82 @@ class _CounselorChatListScreenState extends State<CounselorChatListScreen> {
     super.dispose();
   }
 
-  void _openChatRoom(_CounselorChatItem chat) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _CounselorChatPreviewScreen(chat: chat),
+  Future<void> _loadRooms({bool showLoading = true}) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    try {
+      final List<ChatRoomModel> result = await _service.getMyChatRooms();
+      if (!mounted) return;
+
+      setState(() {
+        _rooms = result
+            .where((ChatRoomModel room) => room.isCounselorView)
+            .toList();
+        _errorMessage = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = error
+            .toString()
+            .replaceFirst('Exception: ', '')
+            .trim();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  List<ChatRoomModel> get _filteredRooms {
+    final String query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _rooms;
+
+    return _rooms.where((ChatRoomModel room) {
+      return room.otherParticipantName.toLowerCase().contains(query) ||
+          room.bookingCode.toLowerCase().contains(query) ||
+          room.lastMessage.toLowerCase().contains(query);
+    }).toList();
+  }
+
+  Future<void> _openRoom(ChatRoomModel room) async {
+    if (room.isUpcoming) {
+      _showMessage(
+        'Room chat aktif pada '
+        '${DateFormat('d MMM yyyy, HH:mm').format(room.scheduledStart)}.',
+      );
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RoomChatScreen(roomId: room.roomId),
       ),
     );
+
+    if (mounted) {
+      await _loadRooms(showLoading: false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppColors.primary,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   @override
@@ -85,115 +120,18 @@ class _CounselorChatListScreenState extends State<CounselorChatListScreen> {
       color: AppColors.bgGradientStart,
       child: Stack(
         fit: StackFit.expand,
-        children: [
+        children: <Widget>[
           const _CounselorChatBackground(),
           SafeArea(
             child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'User Chat',
-                          style: GoogleFonts.poppins(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.white.withOpacity(0.92),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.chat_bubble_rounded,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Balas pesan dan lanjutkan konsultasi dengan user.',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: AppColors.textMedium,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Search box
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.white.withOpacity(0.92),
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (_) => setState(() {}),
-                      style: GoogleFonts.poppins(fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: 'Search user or topic...',
-                        hintStyle: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: AppColors.textLight,
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.search_rounded,
-                          color: AppColors.textMedium,
-                        ),
-                        filled: true,
-                        fillColor: AppColors.surfaceMuted,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: const BorderSide(
-                            color: AppColors.primary,
-                            width: 1.3,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
+              children: <Widget>[
+                _buildHeader(),
                 Expanded(
-                  child: _filteredChats.isEmpty
-                      ? _buildEmptyState()
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          itemCount: _filteredChats.length,
-                          itemBuilder: (context, index) {
-                            final chat = _filteredChats[index];
-                            return _ChatUserCard(
-                              chat: chat,
-                              onTap: () => _openChatRoom(chat),
-                            );
-                          },
-                        ),
+                  child: RefreshIndicator(
+                    color: AppColors.primary,
+                    onRefresh: () => _loadRooms(showLoading: false),
+                    child: _buildContent(),
+                  ),
                 ),
               ],
             ),
@@ -203,124 +141,156 @@ class _CounselorChatListScreenState extends State<CounselorChatListScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.all(24),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: AppColors.white.withOpacity(0.94),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.search_off_rounded,
-              size: 52,
-              color: AppColors.textLight,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No chat found',
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Coba cari dengan nama user atau topik lain.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppColors.textMedium,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ChatUserCard extends StatelessWidget {
-  final _CounselorChatItem chat;
-  final VoidCallback onTap;
-
-  const _ChatUserCard({
-    required this.chat,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isOnline = chat.status == 'Online';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Ink(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.white.withOpacity(0.94),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'User Chat',
+                  style: GoogleFonts.poppins(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                  ),
+                ),
+                Text(
+                  'Konsultasi online realtime dengan user.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: AppColors.textMedium,
+                  ),
                 ),
               ],
             ),
-            child: Row(
-              children: [
-                Stack(
-                  children: [
-                    const CircleAvatar(
-                      radius: 28,
-                      backgroundColor: AppColors.secondaryLight,
-                      child: Icon(
-                        Icons.person,
-                        color: AppColors.teal,
-                        size: 32,
-                      ),
-                    ),
-                    Positioned(
-                      right: 2,
-                      bottom: 2,
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: isOnline
-                              ? AppColors.success
-                              : AppColors.textLight,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.white,
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+          ),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _isLoading ? null : _loadRooms,
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.white.withOpacity(0.92),
+            ),
+            icon: const Icon(
+              Icons.refresh_rounded,
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const <Widget>[
+          SizedBox(height: 220),
+          Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          ),
+        ],
+      );
+    }
+
+    if (_errorMessage != null) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        children: <Widget>[
+          const SizedBox(height: 70),
+          _buildErrorState(),
+        ],
+      );
+    }
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 105),
+      children: <Widget>[
+        TextField(
+          controller: _searchController,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: 'Cari user atau booking code...',
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: _searchController.text.isEmpty
+                ? null
+                : IconButton(
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+            filled: true,
+            fillColor: AppColors.white.withOpacity(0.94),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (_filteredRooms.isEmpty)
+          _buildEmptyState()
+        else
+          ..._filteredRooms.map(_buildRoomCard),
+      ],
+    );
+  }
+
+  Widget _buildRoomCard(ChatRoomModel room) {
+    final Color statusColor = room.isActive
+        ? AppColors.success
+        : room.isUpcoming
+            ? const Color(0xFFD68A1F)
+            : AppColors.textMedium;
+
+    return InkWell(
+      onTap: () => _openRoom(room),
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(
+          color: AppColors.white.withOpacity(0.95),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                const CircleAvatar(
+                  radius: 27,
+                  backgroundColor: AppColors.primarySoft,
+                  child: Icon(
+                    Icons.person_rounded,
+                    color: AppColors.primary,
+                    size: 29,
+                  ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                    children: <Widget>[
                       Row(
-                        children: [
+                        children: <Widget>[
                           Expanded(
                             child: Text(
-                              chat.userName,
+                              room.otherParticipantName,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.poppins(
@@ -330,192 +300,61 @@ class _ChatUserCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          Text(
-                            chat.time,
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: AppColors.textLight,
-                            ),
-                          ),
+                          if (room.unreadCount > 0)
+                            _UnreadBadge(count: room.unreadCount),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
-                        chat.lastMessage,
+                        room.lastMessage,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.poppins(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: AppColors.textMedium,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.primarySoft,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Text(
-                              chat.topic,
-                              style: GoogleFonts.poppins(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                          ),
-                          const Spacer(),
-                          if (chat.unreadCount > 0)
-                            Container(
-                              width: 22,
-                              height: 22,
-                              decoration: const BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${chat.unreadCount}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
                       ),
                     ],
                   ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CounselorChatPreviewScreen extends StatefulWidget {
-  final _CounselorChatItem chat;
-
-  const _CounselorChatPreviewScreen({
-    required this.chat,
-  });
-
-  @override
-  State<_CounselorChatPreviewScreen> createState() =>
-      _CounselorChatPreviewScreenState();
-}
-
-class _CounselorChatPreviewScreenState
-    extends State<_CounselorChatPreviewScreen> {
-  final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-
-  late final List<_PreviewMessage> _messages = [
-    _PreviewMessage(
-      content: 'Halo dok, saya ingin konsultasi.',
-      role: 'user',
-    ),
-    _PreviewMessage(
-      content: 'Halo, tentu. Boleh ceritakan apa yang sedang kamu rasakan?',
-      role: 'counselor',
-    ),
-    _PreviewMessage(
-      content: widget.chat.lastMessage,
-      role: 'user',
-    ),
-  ];
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _sendMessage() {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
-    setState(() {
-      _messages.add(
-        _PreviewMessage(
-          content: text,
-          role: 'counselor',
-        ),
-      );
-      _messageController.clear();
-    });
-
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (!_scrollController.hasClients) return;
-
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bgGradientStart,
-      appBar: AppBar(
-        backgroundColor: AppColors.white,
-        elevation: 1,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: AppColors.primary,
-          ),
-        ),
-        title: Row(
-          children: [
-            const CircleAvatar(
-              radius: 18,
-              backgroundColor: AppColors.secondaryLight,
-              child: Icon(
-                Icons.person,
-                color: AppColors.teal,
-                size: 22,
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: AppColors.primarySoft,
+                borderRadius: BorderRadius.circular(15),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.chat.userName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDark,
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    room.isActive
+                        ? Icons.play_circle_fill_rounded
+                        : room.isUpcoming
+                            ? Icons.lock_clock_rounded
+                            : Icons.history_rounded,
+                    color: statusColor,
+                    size: 17,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      '${room.bookingCode} • '
+                      '${DateFormat('d MMM, HH:mm').format(room.scheduledStart)}–'
+                      '${DateFormat('HH:mm').format(room.scheduledEnd)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                      ),
                     ),
                   ),
-                  Text(
-                    widget.chat.status,
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      color: widget.chat.status == 'Online'
-                          ? AppColors.success
-                          : AppColors.textLight,
-                    ),
+                  _StatusBadge(
+                    label: room.sessionStatusLabel,
+                    color: statusColor,
                   ),
                 ],
               ),
@@ -523,162 +362,134 @@ class _CounselorChatPreviewScreenState
           ],
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                return _buildBubble(_messages[index]);
-              },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      margin: const EdgeInsets.only(top: 35),
+      padding: const EdgeInsets.all(26),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: <Widget>[
+          const Icon(
+            Icons.forum_outlined,
+            size: 54,
+            color: AppColors.textLight,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No Chat Rooms Yet',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
             ),
           ),
-          _buildInputBar(),
+          const SizedBox(height: 6),
+          Text(
+            'Room user muncul setelah pembayaran konsultasi online disetujui admin.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              height: 1.5,
+              color: AppColors.textMedium,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBubble(_PreviewMessage message) {
-    final isCounselor = message.role == 'counselor';
-
-    return Align(
-      alignment: isCounselor ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.72,
-        ),
-        decoration: BoxDecoration(
-          color: isCounselor ? AppColors.primary : AppColors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isCounselor ? 18 : 4),
-            bottomRight: Radius.circular(isCounselor ? 4 : 18),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Text(
-          message.content,
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            color: isCounselor ? AppColors.white : AppColors.textDark,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInputBar() {
+  Widget _buildErrorState() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
-        color: AppColors.white,
-        border: Border(
-          top: BorderSide(color: AppColors.surfaceBorder),
-        ),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(24),
       ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _messageController,
-                style: GoogleFonts.poppins(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Reply as counselor...',
-                  hintStyle: GoogleFonts.poppins(
-                    color: AppColors.textLight,
-                    fontSize: 13,
-                  ),
-                  filled: true,
-                  fillColor: AppColors.surfaceMuted,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(
-                      color: AppColors.primary,
-                      width: 1.2,
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                ),
-                onSubmitted: (_) => _sendMessage(),
-              ),
+      child: Column(
+        children: <Widget>[
+          const Icon(
+            Icons.error_outline_rounded,
+            color: AppColors.error,
+            size: 50,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _errorMessage ?? 'Gagal memuat chat.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppColors.textMedium,
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: _sendMessage,
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: const BoxDecoration(
-                  color: AppColors.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.send_rounded,
-                  color: AppColors.white,
-                  size: 20,
-                ),
-              ),
-            ),
-          ],
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton.icon(
+            onPressed: _loadRooms,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Try Again'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UnreadBadge extends StatelessWidget {
+  final int count;
+
+  const _UnreadBadge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: AppColors.primary,
+        shape: BoxShape.circle,
+      ),
+      child: Text(
+        count > 99 ? '99+' : '$count',
+        style: GoogleFonts.poppins(
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          color: AppColors.white,
         ),
       ),
     );
   }
 }
 
-class _CounselorChatItem {
-  final int id;
-  final String userName;
-  final String lastMessage;
-  final String time;
-  final int unreadCount;
-  final String status;
-  final String topic;
+class _StatusBadge extends StatelessWidget {
+  final String label;
+  final Color color;
 
-  const _CounselorChatItem({
-    required this.id,
-    required this.userName,
-    required this.lastMessage,
-    required this.time,
-    required this.unreadCount,
-    required this.status,
-    required this.topic,
-  });
-}
+  const _StatusBadge({required this.label, required this.color});
 
-class _PreviewMessage {
-  final String content;
-  final String role;
-
-  const _PreviewMessage({
-    required this.content,
-    required this.role,
-  });
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.11),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.poppins(
+          fontSize: 8,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
 }
 
 class _CounselorChatBackground extends StatelessWidget {
@@ -688,48 +499,41 @@ class _CounselorChatBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Stack(
       fit: StackFit.expand,
-      children: [
-        _CounselorChatBlob(
+      children: <Widget>[
+        _ChatBlob(
           alignment: Alignment.topLeft,
           widthFactor: 0.78,
           heightFactor: 0.28,
           color: AppColors.blobPink,
           opacity: 0.95,
         ),
-        _CounselorChatBlob(
+        _ChatBlob(
           alignment: Alignment.topRight,
           widthFactor: 0.82,
           heightFactor: 0.30,
           color: AppColors.blobTeal,
           opacity: 0.34,
         ),
-        _CounselorChatBlob(
+        _ChatBlob(
           alignment: Alignment.centerLeft,
           widthFactor: 1.02,
           heightFactor: 0.56,
           color: AppColors.blobBlue,
           opacity: 0.28,
         ),
-        _CounselorChatBlob(
-          alignment: Alignment.bottomRight,
-          widthFactor: 0.60,
-          heightFactor: 0.22,
-          color: AppColors.blobPink,
-          opacity: 0.30,
-        ),
       ],
     );
   }
 }
 
-class _CounselorChatBlob extends StatelessWidget {
+class _ChatBlob extends StatelessWidget {
   final Alignment alignment;
   final double widthFactor;
   final double heightFactor;
   final Color color;
   final double opacity;
 
-  const _CounselorChatBlob({
+  const _ChatBlob({
     required this.alignment,
     required this.widthFactor,
     required this.heightFactor,
@@ -739,7 +543,7 @@ class _CounselorChatBlob extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final Size size = MediaQuery.of(context).size;
 
     return Align(
       alignment: alignment,
@@ -750,7 +554,7 @@ class _CounselorChatBlob extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
-              colors: [
+              colors: <Color>[
                 color.withOpacity(opacity),
                 color.withOpacity(0),
               ],

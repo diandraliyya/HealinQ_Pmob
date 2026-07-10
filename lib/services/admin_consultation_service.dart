@@ -15,12 +15,15 @@ class AdminConsultationService {
     }
 
     try {
+      await _expireStaleBookingsQuietly();
+
       final List<dynamic> consultationRows = await _client
           .from('consultations')
           .select(
             'id, booking_code, user_id, counselor_id, slot_id, '
             'consultation_type, scheduled_start, scheduled_end, amount, '
-            'notes, status, attendance_status, created_at, updated_at',
+            'notes, status, attendance_status, attendance_confirmed_at, '
+            'attendance_marked_at, attendance_marked_by, created_at, updated_at',
           )
           .order('created_at', ascending: false);
 
@@ -186,6 +189,9 @@ class AdminConsultationService {
           paymentStatus: payment?['status']?.toString() ?? 'unpaid',
           attendanceStatus:
               consultation['attendance_status']?.toString() ?? 'not_required',
+          attendanceConfirmedAt: AdminConsultationModel.parseNullableDate(consultation['attendance_confirmed_at']),
+          attendanceMarkedAt: AdminConsultationModel.parseNullableDate(consultation['attendance_marked_at']),
+          attendanceMarkedBy: consultation['attendance_marked_by']?.toString(),
           paymentMethodName: method?['name']?.toString(),
           proofPath: payment?['proof_path']?.toString(),
           rejectionReason: payment?['rejection_reason']?.toString(),
@@ -265,6 +271,17 @@ class AdminConsultationService {
           .createSignedUrl(proofPath, 600);
     } on StorageException catch (error) {
       throw Exception(error.message);
+    }
+  }
+
+  Future<void> _expireStaleBookingsQuietly() async {
+    try {
+      await _client.rpc(
+        'expire_stale_consultation_bookings',
+        params: <String, dynamic>{'p_limit': 200},
+      );
+    } catch (_) {
+      // pg_cron tetap menjadi jalur utama.
     }
   }
 

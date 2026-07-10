@@ -18,7 +18,6 @@ class AuthSession {
   });
 }
 
-// User Model
 class UserModel {
   final int id;
   final String username;
@@ -29,9 +28,6 @@ class UserModel {
   final String? lastEdu;
   final String? gender;
   final String? address;
-  final int point;
-  final int level;
-  final int streak;
 
   UserModel({
     required this.id,
@@ -43,9 +39,6 @@ class UserModel {
     this.lastEdu,
     this.gender,
     this.address,
-    this.point = 0,
-    this.level = 1,
-    this.streak = 0,
   });
 
   UserModel copyWith({
@@ -58,9 +51,6 @@ class UserModel {
     String? lastEdu,
     String? gender,
     String? address,
-    int? point,
-    int? level,
-    int? streak,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -72,13 +62,10 @@ class UserModel {
       lastEdu: lastEdu ?? this.lastEdu,
       gender: gender ?? this.gender,
       address: address ?? this.address,
-      point: point ?? this.point,
-      level: level ?? this.level,
-      streak: streak ?? this.streak,
     );
   }
 
-  Map<String, dynamic> toMap() => {
+  Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
         'username': username,
         'name': name,
@@ -88,13 +75,9 @@ class UserModel {
         'lastEdu': lastEdu,
         'gender': gender,
         'address': address,
-        'point': point,
-        'level': level,
-        'streak': streak,
       };
 }
 
-// Admin Model
 class AdminModel {
   final int id;
   final String username;
@@ -110,7 +93,7 @@ class AdminModel {
     required this.password,
   });
 
-  Map<String, dynamic> toMap() => {
+  Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
         'username': username,
         'name': name,
@@ -119,7 +102,6 @@ class AdminModel {
       };
 }
 
-// Counselor Model
 class CounselorModel {
   final int id;
   final String username;
@@ -128,7 +110,7 @@ class CounselorModel {
   final String password;
   final String specialization;
   final double rating;
-  final String type; // Online, Offline, Both
+  final String type;
   final String location;
   final String bio;
   final int yearsExperience;
@@ -191,7 +173,7 @@ class CounselorModel {
     );
   }
 
-  Map<String, dynamic> toMap() => {
+  Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
         'username': username,
         'name': name,
@@ -210,30 +192,86 @@ class CounselorModel {
       };
 }
 
-// Journal Model
 class JournalModel {
-  final int id;
+  final String id;
+  final String userId;
   final String title;
   final String content;
   final String? moodTag;
   final DateTime createdAt;
+  final DateTime updatedAt;
 
   JournalModel({
-    required this.id,
+    required Object id,
+    this.userId = '',
     required this.title,
     required this.content,
     this.moodTag,
     required this.createdAt,
-  });
+    DateTime? updatedAt,
+  })  : id = id.toString(),
+        updatedAt = updatedAt ?? createdAt;
+
+  factory JournalModel.fromMap(
+    Map<String, dynamic> map,
+  ) {
+    final DateTime createdAt = DateTime.tryParse(
+          map['created_at']?.toString() ?? '',
+        )?.toLocal() ??
+        DateTime.now();
+
+    final DateTime updatedAt = DateTime.tryParse(
+          map['updated_at']?.toString() ?? '',
+        )?.toLocal() ??
+        createdAt;
+
+    return JournalModel(
+      id: map['id']?.toString() ?? '',
+      userId: map['user_id']?.toString() ?? '',
+      title: map['title']?.toString().trim() ?? '',
+      content: map['content']?.toString() ?? '',
+      moodTag: _nullableJournalString(
+        map['mood_tag'],
+      ),
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+    );
+  }
+
+  JournalModel copyWith({
+    String? id,
+    String? userId,
+    String? title,
+    String? content,
+    String? moodTag,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return JournalModel(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      title: title ?? this.title,
+      content: content ?? this.content,
+      moodTag: moodTag ?? this.moodTag,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  static String? _nullableJournalString(
+    dynamic value,
+  ) {
+    final String text = value?.toString().trim() ?? '';
+    return text.isEmpty ? null : text;
+  }
 }
 
-// Consultation Model
 class ConsultationModel {
   final int id;
   final CounselorModel counselor;
-  final String type; // Online / Offline
+  final String type;
   final DateTime scheduledAt;
-  final String status; // Pending, Confirmed, Cancelled, Completed
+  final String status;
   final String? notes;
   final String bookingCode;
 
@@ -268,11 +306,10 @@ class ConsultationModel {
   }
 }
 
-// Message Model
 class MessageModel {
   final int id;
   final String content;
-  final String role; // user, counselor, system
+  final String role;
   final DateTime createdAt;
 
   MessageModel({
@@ -283,11 +320,10 @@ class MessageModel {
   });
 }
 
-// Passion Question Model
 class PassionQuestion {
   final int id;
   final String questionText;
-  int? answerValue; // 1-5 Likert scale
+  int? answerValue;
 
   PassionQuestion({
     required this.id,

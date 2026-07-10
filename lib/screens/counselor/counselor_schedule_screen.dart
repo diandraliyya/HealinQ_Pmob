@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -33,6 +35,7 @@ class _CounselorScheduleScreenState
 
   String? _errorMessage;
   String? _processingSlotId;
+  Timer? _attendanceTimer;
 
   bool get _canManageSchedule =>
       _accountStatus == 'active';
@@ -104,6 +107,15 @@ class _CounselorScheduleScreenState
   void initState() {
     super.initState();
     _loadSchedule();
+    _attendanceTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _attendanceTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadSchedule({
@@ -375,18 +387,16 @@ class _CounselorScheduleScreenState
     });
 
     try {
-      await _service.deleteSlot(
-        item.slotId,
-      );
+      final String action = await _service.deleteSlot(item.slotId);
 
-      await _loadSchedule(
-        showLoading: false,
-      );
+      await _loadSchedule(showLoading: false);
 
       if (!mounted) return;
 
       _showMessage(
-        'Jadwal berhasil dihapus.',
+        action == 'blocked'
+            ? 'Jadwal dinonaktifkan karena sudah memiliki riwayat booking.'
+            : 'Jadwal berhasil dihapus.',
         isError: false,
       );
     } catch (error) {
@@ -396,6 +406,79 @@ class _CounselorScheduleScreenState
         _cleanError(error.toString()),
         isError: true,
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _processingSlotId = null;
+          _isMutating = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _markAttendance(
+    CounselorScheduleItemModel item,
+    String result,
+  ) async {
+    final String? consultationId = item.consultationId;
+    if (_isMutating || consultationId == null || consultationId.isEmpty) return;
+
+    final bool attended = result == 'attended';
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppColors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Text(
+            attended ? 'Mark as Attended?' : 'Mark as Did Not Attend?',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: AppColors.textDark),
+          ),
+          content: Text(
+            attended
+                ? 'Pastikan user benar-benar datang ke sesi konsultasi offline ini.'
+                : 'Pastikan jadwal sudah selesai dan user benar-benar tidak datang.',
+            style: GoogleFonts.poppins(fontSize: 12, height: 1.6, color: AppColors.textMedium),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: attended ? AppColors.success : AppColors.error,
+                foregroundColor: AppColors.white,
+              ),
+              child: Text(attended ? 'Attended' : 'Did Not Attend'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    setState(() {
+      _processingSlotId = item.slotId;
+      _isMutating = true;
+    });
+
+    try {
+      await _service.markOfflineAttendance(
+        consultationId: consultationId,
+        result: result,
+      );
+      await _loadSchedule(showLoading: false);
+      if (!mounted) return;
+      _showMessage(
+        attended ? 'Kehadiran user ditandai Hadir.' : 'User ditandai Tidak Hadir.',
+        isError: false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showMessage(_cleanError(error.toString()), isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -1164,6 +1247,11 @@ class _CounselorScheduleScreenState
           ),
           const SizedBox(height: 11),
           _detailRow(
+            'User',
+            item.userName,
+          ),
+          const SizedBox(height: 7),
+          _detailRow(
             'Booking Code',
             item.bookingCode ?? '-',
           ),
@@ -1179,10 +1267,17 @@ class _CounselorScheduleScreenState
           ),
           if (item.isOffline) ...<Widget>[
             const SizedBox(height: 7),
-            _detailRow(
-              'Attendance',
-              item.attendanceStatusLabel,
-            ),
+            _detailRow('User Confirmation', item.userConfirmationLabel),
+            const SizedBox(height: 7),
+            _detailRow('Actual Attendance', item.actualAttendanceLabel),
+            if (item.isActualAttendanceFinal && item.attendanceMarkedAt != null) ...<Widget>[
+              const SizedBox(height: 7),
+              _detailRow('Recorded At', item.attendanceMarkedAtLabel),
+            ],
+            if (!item.isActualAttendanceFinal && item.paymentStatus == 'paid') ...<Widget>[
+              const SizedBox(height: 12),
+              _buildAttendanceActions(item),
+            ],
           ],
           if (item.notes?.trim().isNotEmpty ==
               true) ...<Widget>[
@@ -1235,6 +1330,76 @@ class _CounselorScheduleScreenState
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttendanceActions(CounselorScheduleItemModel item) {
+    final bool canAttended = item.canMarkAttended && !_isMutating;
+    final bool canAbsent = item.canMarkAbsent && !_isMutating;
+
+    String information;
+    if (DateTime.now().isBefore(item.attendedButtonOpenAt)) {
+      information = 'Mark Attended aktif 30 menit sebelum jadwal.';
+    } else if (DateTime.now().isBefore(item.endAt)) {
+      information = 'Attended sudah dapat dipilih. Did Not Attend aktif setelah sesi selesai.';
+    } else {
+      information = 'Jadwal sudah selesai. Pilih hasil kehadiran aktual user.';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.72),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            information,
+            style: GoogleFonts.poppins(fontSize: 9, height: 1.5, color: AppColors.textMedium),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: canAttended ? () => _markAttendance(item, 'attended') : null,
+                  icon: const Icon(Icons.how_to_reg_rounded, size: 17),
+                  label: Text('Attended', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                    foregroundColor: AppColors.white,
+                    disabledBackgroundColor: AppColors.textLight.withOpacity(0.22),
+                    disabledForegroundColor: AppColors.textMedium,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: canAbsent ? () => _markAttendance(item, 'absent') : null,
+                  icon: const Icon(Icons.person_off_rounded, size: 17),
+                  label: Text('No Show', style: GoogleFonts.poppins(fontSize: 10, fontWeight: FontWeight.w700)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    disabledForegroundColor: AppColors.textLight,
+                    side: BorderSide(
+                      color: canAbsent ? AppColors.error : AppColors.textLight.withOpacity(0.35),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
