@@ -4,6 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 import 'onboarding_screen.dart';
 
+import '../services/auth_service.dart';
+import 'admin/admin_dashboard_screen.dart';
+import 'auth/login_screen.dart';
+import 'counselor/counselor_dashboard_screen.dart';
+import 'counselor/counselor_waiting_approval_screen.dart';
+import 'home/home_screen.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -40,12 +47,73 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    Future.delayed(const Duration(seconds: 3), () {
+    _routeAfterSplash();
+  }
+
+  Future<void> _routeAfterSplash() async {
+    await Future.delayed(const Duration(seconds: 3));
+
+    if (!mounted) return;
+
+    try {
+      final profile = await AuthService().getCurrentProfile();
+
       if (!mounted) return;
+
+      if (profile == null) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const OnboardingScreen(),
+          ),
+        );
+        return;
+      }
+
+      final role = profile['role'] as String? ?? 'user';
+      final status = profile['status'] as String? ?? 'inactive';
+
+      Widget destination;
+
+      if (status == 'inactive' || status == 'suspended') {
+        await AuthService().logout();
+        destination = const OnboardingScreen();
+      } else if (role == 'counselor' && status == 'pending') {
+        destination = const CounselorWaitingApprovalScreen();
+      } else {
+        switch (role) {
+          case 'admin':
+            destination = const AdminDashboardScreen();
+            break;
+
+          case 'counselor':
+            destination = const CounselorDashboardScreen();
+            break;
+
+          case 'user':
+          default:
+            destination = const HomeScreen();
+            break;
+        }
+      }
+
+      if (!mounted) return;
+
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+        MaterialPageRoute(
+          builder: (_) => destination,
+        ),
       );
-    });
+    } catch (_) {
+      await AuthService().logout();
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const OnboardingScreen(),
+        ),
+      );
+    }
   }
 
   @override
