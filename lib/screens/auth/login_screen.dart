@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../admin/admin_dashboard_screen.dart';
 import '../counselor/counselor_dashboard_screen.dart';
+import '../counselor/counselor_waiting_approval_screen.dart';
 import '../home/home_screen.dart';
 import 'signup_screen.dart';
 
@@ -16,9 +19,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   bool _isLoading = false;
 
@@ -33,62 +37,276 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
 
-    setState(() => _isLoading = true);
+    if (_isLoading) return;
+
+    final bool isValid = _formKey.currentState?.validate() ?? false;
+
+    if (!isValid) return;
+
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
-      final profile = await AuthService().login(
+      final Map<String, dynamic> profile = await AuthService().login(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
       if (!mounted) return;
 
-      final role = profile['account_type'] as String? ?? 'user';
+      final String role =
+          profile['role']?.toString().trim().toLowerCase() ?? '';
+
+      final String status =
+          profile['status']?.toString().trim().toLowerCase() ?? '';
+
+      if (role.isEmpty) {
+        await AuthService().logout();
+
+        if (!mounted) return;
+
+        _showErrorMessage(
+          'Role akun tidak ditemukan. Silakan hubungi admin.',
+        );
+        return;
+      }
+
+      if (status == 'inactive') {
+        await AuthService().logout();
+
+        if (!mounted) return;
+
+        _showErrorMessage(
+          'Akun kamu sedang tidak aktif. Silakan hubungi admin.',
+        );
+        return;
+      }
+
+      if (status == 'suspended') {
+        await AuthService().logout();
+
+        if (!mounted) return;
+
+        _showErrorMessage(
+          'Akun kamu sedang ditangguhkan. Silakan hubungi admin.',
+        );
+        return;
+      }
 
       Widget destination;
 
-      switch (role) {
-        case 'admin':
-          destination = const AdminDashboardScreen();
-          break;
-        case 'counselor':
-          destination = const CounselorDashboardScreen();
-          break;
-        case 'user':
-        default:
-          destination = const HomeScreen();
-          break;
+      if (role == 'counselor' && status == 'pending') {
+        destination = const CounselorWaitingApprovalScreen();
+      } else {
+        if (status != 'active') {
+          await AuthService().logout();
+
+          if (!mounted) return;
+
+          _showErrorMessage(
+            'Status akun tidak valid. Silakan hubungi admin.',
+          );
+          return;
+        }
+
+        switch (role) {
+          case 'admin':
+            destination = const AdminDashboardScreen();
+            break;
+
+          case 'counselor':
+            destination = const CounselorDashboardScreen();
+            break;
+
+          case 'user':
+            destination = const HomeScreen();
+            break;
+
+          default:
+            await AuthService().logout();
+
+            if (!mounted) return;
+
+            _showErrorMessage(
+              'Jenis akun tidak dikenali. Silakan hubungi admin.',
+            );
+            return;
+        }
       }
 
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => destination),
-        (route) => false,
+        MaterialPageRoute<void>(
+          builder: (_) => destination,
+        ),
+        (Route<dynamic> route) => false,
       );
-    } catch (e) {
+    } on AuthException catch (error) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Login failed: $e'),
-          backgroundColor: AppColors.error,
-        ),
+      _showErrorMessage(
+        _translateAuthError(error.message),
+      );
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+
+      await _safeLogout();
+
+      if (!mounted) return;
+
+      _showErrorMessage(
+        _translateDatabaseError(error.message),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      await _safeLogout();
+
+      if (!mounted) return;
+
+      _showErrorMessage(
+        _cleanErrorMessage(error.toString()),
       );
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
 
-  void _loginWithGoogle() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Google Login akan kita integrasikan setelah login email berhasil.',
+  Future<void> _safeLogout() async {
+    try {
+      await AuthService().logout();
+    } catch (_) {
+      // Tidak perlu menampilkan error tambahan saat pembersihan session.
+    }
+  }
+
+  void _showErrorMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              color: AppColors.white,
+            ),
+          ),
+          backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
         ),
-        backgroundColor: AppColors.brandTeal,
+      );
+  }
+
+  String _translateAuthError(String message) {
+    final String lowerMessage = message.toLowerCase();
+
+    if (lowerMessage.contains('invalid login credentials')) {
+      return 'Email atau password salah.';
+    }
+
+    if (lowerMessage.contains('email not confirmed')) {
+      return 'Email belum dikonfirmasi. Silakan cek inbox email kamu.';
+    }
+
+    if (lowerMessage.contains('user not found')) {
+      return 'Akun dengan email tersebut tidak ditemukan.';
+    }
+
+    if (lowerMessage.contains('too many requests') ||
+        lowerMessage.contains('rate limit')) {
+      return 'Terlalu banyak percobaan login. Silakan tunggu beberapa saat.';
+    }
+
+    if (lowerMessage.contains('network') ||
+        lowerMessage.contains('socket') ||
+        lowerMessage.contains('connection')) {
+      return 'Tidak dapat terhubung ke server. Periksa koneksi internet kamu.';
+    }
+
+    return message;
+  }
+
+  String _translateDatabaseError(String message) {
+    final String lowerMessage = message.toLowerCase();
+
+    if (lowerMessage.contains('multiple') &&
+        lowerMessage.contains('rows')) {
+      return 'Data profil akun terduplikasi. Silakan hubungi admin.';
+    }
+
+    if (lowerMessage.contains('zero rows') ||
+        lowerMessage.contains('no rows')) {
+      return 'Profil akun tidak ditemukan di database.';
+    }
+
+    if (lowerMessage.contains('permission denied') ||
+        lowerMessage.contains('row-level security')) {
+      return 'Akses profil ditolak oleh database. Periksa pengaturan RLS.';
+    }
+
+    return 'Gagal membaca profil akun: $message';
+  }
+
+  String _cleanErrorMessage(String message) {
+    String cleanMessage = message.trim();
+
+    if (cleanMessage.startsWith('Exception: ')) {
+      cleanMessage = cleanMessage.substring('Exception: '.length);
+    }
+
+    if (cleanMessage.isEmpty) {
+      return 'Login gagal. Silakan coba kembali.';
+    }
+
+    return cleanMessage;
+  }
+
+  String? _validateEmail(String? value) {
+    final String email = value?.trim() ?? '';
+
+    if (email.isEmpty) {
+      return 'Please enter your email';
+    }
+
+    final RegExp emailRegex = RegExp(
+      r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+    );
+
+    if (!emailRegex.hasMatch(email)) {
+      return 'Please enter a valid email';
+    }
+
+    return null;
+  }
+
+  String? _validatePassword(String? value) {
+    final String password = value ?? '';
+
+    if (password.isEmpty) {
+      return 'Please enter your password';
+    }
+
+    if (password.length < 6) {
+      return 'Password must be at least 6 characters';
+    }
+
+    return null;
+  }
+
+  void _goToSignUp() {
+    if (_isLoading) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => const SignUpScreen(),
       ),
     );
   }
@@ -97,6 +315,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _baseColor,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -105,14 +324,16 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 28,
+                  padding: const EdgeInsets.fromLTRB(
+                    24,
+                    22,
+                    24,
+                    20,
                   ),
                   child: Column(
                     children: [
                       _buildLogo(),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 14),
                       Text(
                         'Continue where you left off.\nWe\'re here for you.',
                         textAlign: TextAlign.center,
@@ -137,160 +358,135 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(32),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(
+                        32,
+                        30,
+                        32,
+                        36,
+                      ),
                       child: Form(
                         key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Center(
-                              child: Text(
-                                'Login',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.brandBlue,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 28),
-                            AppTextField(
-                              hint: 'Email',
-                              controller: _emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              validator: (v) {
-                                if (v == null || v.isEmpty) {
-                                  return 'Please enter your email';
-                                }
-                                if (!v.contains('@')) {
-                                  return 'Please enter a valid email';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            AppTextField(
-                              hint: 'Password',
-                              controller: _passwordController,
-                              isPassword: true,
-                              validator: (v) => v == null || v.isEmpty
-                                  ? 'Please enter your password'
-                                  : null,
-                            ),
-                            const SizedBox(height: 24),
-                            Row(
-                              children: [
-                                const Expanded(child: Divider()),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                  ),
-                                  child: Text(
-                                    'or',
-                                    style: GoogleFonts.poppins(
-                                      color: AppColors.textLight,
-                                    ),
-                                  ),
-                                ),
-                                const Expanded(child: Divider()),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _isLoading ? null : _loginWithGoogle,
-                                icon: const Icon(
-                                  Icons.g_mobiledata,
-                                  size: 24,
-                                  color: Colors.blue,
-                                ),
-                                label: Text(
-                                  'Login with Google',
+                        child: AutofillGroup(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Center(
+                                child: Text(
+                                  'Login',
                                   style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppColors.textDark,
-                                  ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                  side: const BorderSide(
-                                    color: AppColors.surfaceBorder,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.brandBlue,
                                   ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _login,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.brandTeal,
-                                  foregroundColor: AppColors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
+                              const SizedBox(height: 8),
+                              Center(
+                                child: Text(
+                                  'Sign in to continue to HealinQ',
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13,
+                                    color: AppColors.textMedium,
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                  elevation: 0,
                                 ),
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : Text(
-                                        'Login',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
                               ),
-                            ),
-                            const SizedBox(height: 20),
-                            Center(
-                              child: GestureDetector(
-                                onTap: () =>
-                                    Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute(
-                                    builder: (_) => const SignUpScreen(),
-                                  ),
-                                ),
-                                child: RichText(
-                                  text: TextSpan(
-                                    text: 'Don\'t have account? ',
-                                    style: GoogleFonts.poppins(
-                                      color: AppColors.textMedium,
-                                      fontSize: 14,
+                              const SizedBox(height: 28),
+                              AppTextField(
+                                hint: 'Email',
+                                controller: _emailController,
+                                keyboardType:
+                                    TextInputType.emailAddress,
+                                validator: _validateEmail,
+                              ),
+                              const SizedBox(height: 16),
+                              AppTextField(
+                                hint: 'Password',
+                                controller: _passwordController,
+                                isPassword: true,
+                                validator: _validatePassword,
+                              ),
+                              const SizedBox(height: 26),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed:
+                                      _isLoading ? null : _login,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor:
+                                        AppColors.brandTeal,
+                                    foregroundColor:
+                                        AppColors.white,
+                                    disabledBackgroundColor:
+                                        AppColors.brandTeal
+                                            .withOpacity(0.55),
+                                    disabledForegroundColor:
+                                        AppColors.white,
+                                    elevation: 0,
+                                    padding:
+                                        const EdgeInsets.symmetric(
+                                      vertical: 16,
                                     ),
-                                    children: [
-                                      TextSpan(
-                                        text: 'Sign Up',
-                                        style: GoogleFonts.poppins(
-                                          color: AppColors.brandTeal,
-                                          fontWeight: FontWeight.w600,
-                                          decoration: TextDecoration.underline,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(30),
+                                    ),
+                                  ),
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 21,
+                                          height: 21,
+                                          child:
+                                              CircularProgressIndicator(
+                                            strokeWidth: 2.3,
+                                            color: AppColors.white,
+                                          ),
+                                        )
+                                      : Text(
+                                          'Login',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 16,
+                                            fontWeight:
+                                                FontWeight.w700,
+                                          ),
                                         ),
+                                ),
+                              ),
+                              const SizedBox(height: 22),
+                              Center(
+                                child: GestureDetector(
+                                  onTap: _goToSignUp,
+                                  child: RichText(
+                                    textAlign: TextAlign.center,
+                                    text: TextSpan(
+                                      text:
+                                          'Don\'t have an account? ',
+                                      style: GoogleFonts.poppins(
+                                        color: AppColors.textMedium,
+                                        fontSize: 14,
                                       ),
-                                    ],
+                                      children: [
+                                        TextSpan(
+                                          text: 'Sign Up',
+                                          style: GoogleFonts.poppins(
+                                            color:
+                                                AppColors.brandTeal,
+                                            fontWeight:
+                                                FontWeight.w700,
+                                            decoration:
+                                                TextDecoration
+                                                    .underline,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -307,11 +503,18 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _buildLogo() {
     return Image.asset(
       'assets/images/logo_healinq.png',
-      width: 115,
-      height: 115,
+      width: 100,
+      height: 100,
       fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        return const SizedBox(width: 115, height: 115);
+      errorBuilder: (
+        BuildContext context,
+        Object error,
+        StackTrace? stackTrace,
+      ) {
+        return const SizedBox(
+          width: 100,
+          height: 100,
+        );
       },
     );
   }
@@ -368,20 +571,22 @@ class _LoginGradientBlob extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final Size size = MediaQuery.of(context).size;
 
     return Align(
       alignment: alignment,
-      child: Container(
-        width: size.width * widthFactor,
-        height: size.height * heightFactor,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [
-              color.withOpacity(opacity),
-              color.withOpacity(0),
-            ],
+      child: IgnorePointer(
+        child: Container(
+          width: size.width * widthFactor,
+          height: size.height * heightFactor,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [
+                color.withOpacity(opacity),
+                color.withOpacity(0),
+              ],
+            ),
           ),
         ),
       ),
