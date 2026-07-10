@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'counselor_chat_list_screen.dart';
-import 'counselor_schedule_screen.dart';
 import 'counselor_profile_screen.dart';
+import 'counselor_schedule_screen.dart';
 
 import '../../theme/app_theme.dart';
 import '../../utils/app_state.dart';
@@ -16,20 +18,294 @@ class CounselorDashboardScreen extends StatefulWidget {
       _CounselorDashboardScreenState();
 }
 
-class _CounselorDashboardScreenState extends State<CounselorDashboardScreen> {
+class _CounselorDashboardScreenState
+    extends State<CounselorDashboardScreen> {
+  final SupabaseClient _supabase = Supabase.instance.client;
+
   int _currentIndex = 0;
 
-  void _changePage(int index) {
+  bool _isLoading = true;
+  bool _isLoggingOut = false;
+  String? _errorMessage;
+  _CounselorDashboardData? _dashboardData;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboard();
+  }
+
+  Future<void> _changePage(int index) async {
     setState(() {
       _currentIndex = index;
     });
+
+    if (index == 0) {
+      await _loadDashboard(showLoading: false);
+    }
+  }
+
+  Future<void> _loadDashboard({
+    bool showLoading = true,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
+    try {
+      final User? user = _supabase.auth.currentUser;
+
+      if (user == null) {
+        throw Exception(
+          'Sesi login tidak ditemukan. Silakan login kembali.',
+        );
+      }
+
+      final Map<String, dynamic> profile =
+          Map<String, dynamic>.from(
+        await _supabase
+            .from('profiles')
+            .select(
+              'id, username, full_name, email, role, status, avatar_path',
+            )
+            .eq('id', user.id)
+            .single(),
+      );
+
+      if (profile['role']?.toString() != 'counselor') {
+        throw Exception(
+          'Dashboard ini hanya dapat diakses oleh counselor.',
+        );
+      }
+
+      final Map<String, dynamic> counselorProfile =
+          Map<String, dynamic>.from(
+        await _supabase
+            .from('counselor_profiles')
+            .select(
+              'specialization, rating, rating_count, is_available',
+            )
+            .eq('id', user.id)
+            .single(),
+      );
+
+      final List<dynamic> rawSlots = await _supabase
+          .from('counselor_slots')
+          .select('id, status, start_at, end_at')
+          .eq('counselor_id', user.id)
+          .order('start_at', ascending: true);
+
+      final DateTime now = DateTime.now();
+
+      int todaySessions = 0;
+      int upcomingSessions = 0;
+      int availableSlots = 0;
+
+      for (final dynamic rawItem in rawSlots) {
+        final Map<String, dynamic> item =
+            Map<String, dynamic>.from(rawItem as Map);
+
+        final String status =
+            item['status']?.toString() ?? '';
+
+        final DateTime startAt = DateTime.parse(
+          item['start_at'].toString(),
+        ).toLocal();
+
+        final DateTime endAt = DateTime.parse(
+          item['end_at'].toString(),
+        ).toLocal();
+
+        final bool isToday =
+            startAt.year == now.year &&
+            startAt.month == now.month &&
+            startAt.day == now.day;
+
+        if (status == 'booked' && isToday) {
+          todaySessions++;
+        }
+
+        if (status == 'booked' && startAt.isAfter(now)) {
+          upcomingSessions++;
+        }
+
+        if (status == 'available' && endAt.isAfter(now)) {
+          availableSlots++;
+        }
+      }
+
+      final String? avatarPath =
+          profile['avatar_path']?.toString().trim();
+
+      final String? avatarUrl =
+          avatarPath == null || avatarPath.isEmpty
+              ? null
+              : _supabase.storage
+                  .from('profile-pictures')
+                  .getPublicUrl(avatarPath);
+
+      final _CounselorDashboardData result =
+          _CounselorDashboardData(
+        fullName:
+            profile['full_name']?.toString().trim().isNotEmpty == true
+                ? profile['full_name'].toString().trim()
+                : 'Counselor',
+        email: profile['email']?.toString() ?? user.email ?? '-',
+        username: profile['username']?.toString() ?? '',
+        accountStatus: profile['status']?.toString() ?? '',
+        specialization:
+            counselorProfile['specialization']
+                        ?.toString()
+                        .trim()
+                        .isNotEmpty ==
+                    true
+                ? counselorProfile['specialization']
+                    .toString()
+                    .trim()
+                : 'General Counseling',
+        rating: _toDouble(counselorProfile['rating']),
+        ratingCount: _toInt(
+          counselorProfile['rating_count'],
+        ),
+        isAvailable:
+            counselorProfile['is_available'] == true ||
+            availableSlots > 0,
+        todaySessions: todaySessions,
+        upcomingSessions: upcomingSessions,
+        availableSlots: availableSlots,
+        avatarUrl: avatarUrl,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _dashboardData = result;
+        _errorMessage = null;
+      });
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = _translatePostgrestError(error);
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = _cleanErrorMessage(
+          error.toString(),
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _logout() async {
+    if (_isLoggingOut) return;
+
+    setState(() {
+      _isLoggingOut = true;
+    });
+
+    try {
+      await _supabase.auth.signOut();
+
+      if (!mounted) return;
+
+      context.read<AppState>().logout();
+
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/onboarding',
+        (Route<dynamic> route) => false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              _cleanErrorMessage(error.toString()),
+            ),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoggingOut = false;
+        });
+      }
+    }
+  }
+
+  String _translatePostgrestError(
+    PostgrestException error,
+  ) {
+    final String message =
+        '${error.code ?? ''} ${error.message} '
+        '${error.details ?? ''}'.toLowerCase();
+
+    if (message.contains('row-level security') ||
+        message.contains('42501') ||
+        message.contains('permission denied')) {
+      return 'Kamu tidak memiliki izin untuk membaca data dashboard.';
+    }
+
+    if (message.contains('multiple') &&
+        message.contains('rows')) {
+      return 'Data counselor tidak valid atau duplikat.';
+    }
+
+    return error.message.trim().isEmpty
+        ? 'Gagal memuat dashboard counselor.'
+        : error.message.trim();
+  }
+
+  String _cleanErrorMessage(String message) {
+    return message
+        .replaceFirst('Exception: ', '')
+        .trim();
+  }
+
+  double _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  int _toInt(dynamic value) {
+    if (value is num) return value.toInt();
+
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
+    final List<Widget> pages = <Widget>[
       _CounselorDashboardHome(
+        data: _dashboardData,
+        isLoading: _isLoading,
+        isLoggingOut: _isLoggingOut,
+        errorMessage: _errorMessage,
+        onRefresh: () {
+          return _loadDashboard(
+            showLoading: false,
+          );
+        },
+        onRetry: _loadDashboard,
         onNavigate: _changePage,
+        onLogout: _logout,
       ),
       const CounselorChatListScreen(),
       const CounselorScheduleScreen(),
@@ -48,27 +324,46 @@ class _CounselorDashboardScreenState extends State<CounselorDashboardScreen> {
         backgroundColor: AppColors.white,
         surfaceTintColor: Colors.transparent,
         indicatorColor: AppColors.primarySoft,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: _changePage,
-        destinations: const [
+        labelBehavior:
+            NavigationDestinationLabelBehavior.alwaysShow,
+        onDestinationSelected: (int index) {
+          _changePage(index);
+        },
+        destinations: const <NavigationDestination>[
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard_rounded),
+            icon: Icon(
+              Icons.dashboard_outlined,
+            ),
+            selectedIcon: Icon(
+              Icons.dashboard_rounded,
+            ),
             label: 'Dashboard',
           ),
           NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline_rounded),
-            selectedIcon: Icon(Icons.chat_bubble_rounded),
+            icon: Icon(
+              Icons.chat_bubble_outline_rounded,
+            ),
+            selectedIcon: Icon(
+              Icons.chat_bubble_rounded,
+            ),
             label: 'Chat',
           ),
           NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month_rounded),
+            icon: Icon(
+              Icons.calendar_month_outlined,
+            ),
+            selectedIcon: Icon(
+              Icons.calendar_month_rounded,
+            ),
             label: 'Schedule',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon: Icon(Icons.person_rounded),
+            icon: Icon(
+              Icons.person_outline_rounded,
+            ),
+            selectedIcon: Icon(
+              Icons.person_rounded,
+            ),
             label: 'Profile',
           ),
         ],
@@ -77,210 +372,447 @@ class _CounselorDashboardScreenState extends State<CounselorDashboardScreen> {
   }
 }
 
-class _CounselorDashboardHome extends StatelessWidget {
-  final ValueChanged<int> onNavigate;
+class _CounselorDashboardHome
+    extends StatelessWidget {
+  final _CounselorDashboardData? data;
+  final bool isLoading;
+  final bool isLoggingOut;
+  final String? errorMessage;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function({
+    bool showLoading,
+  }) onRetry;
+  final Future<void> Function(int index)
+      onNavigate;
+  final Future<void> Function() onLogout;
 
   const _CounselorDashboardHome({
+    required this.data,
+    required this.isLoading,
+    required this.isLoggingOut,
+    required this.errorMessage,
+    required this.onRefresh,
+    required this.onRetry,
     required this.onNavigate,
+    required this.onLogout,
   });
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final counselor = state.currentCounselor;
-    final session = state.currentSession;
-
-    final counselorConsultations = state.consultations.where((item) {
-      return item.counselor.id == counselor?.id;
-    }).toList();
-
-    final today = DateTime.now();
-
-    final todayConsultations = counselorConsultations.where((item) {
-      return item.scheduledAt.year == today.year &&
-          item.scheduledAt.month == today.month &&
-          item.scheduledAt.day == today.day;
-    }).length;
-
-    final upcomingConsultations = counselorConsultations.where((item) {
-      return item.scheduledAt.isAfter(DateTime.now());
-    }).length;
-
     return Container(
       color: AppColors.bgGradientStart,
       child: Stack(
         fit: StackFit.expand,
-        children: [
+        children: <Widget>[
           const _CounselorSoftBackground(),
           SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _CounselorTopBar(
-                    title: 'Counselor Panel',
-                    subtitle: 'Welcome back, ${session?.name ?? 'Counselor'}',
-                    onLogout: () {
-                      context.read<AppState>().logout();
-                      Navigator.of(context).pushNamedAndRemoveUntil(
-                        '/onboarding',
-                        (route) => false,
-                      );
-                    },
+            child: RefreshIndicator(
+              color: AppColors.primary,
+              onRefresh: onRefresh,
+              child: _buildBody(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    if (isLoading && data == null) {
+      return ListView(
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        children: const <Widget>[
+          SizedBox(height: 260),
+          Center(
+            child: CircularProgressIndicator(
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (errorMessage != null && data == null) {
+      return ListView(
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        children: <Widget>[
+          const SizedBox(height: 100),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppColors.white.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(26),
+            ),
+            child: Column(
+              children: <Widget>[
+                const Icon(
+                  Icons.error_outline_rounded,
+                  size: 52,
+                  color: AppColors.error,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Failed to load dashboard',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
                   ),
-                  const SizedBox(height: 20),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: AppColors.white.withOpacity(0.92),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        const CircleAvatar(
-                          radius: 34,
-                          backgroundColor: AppColors.secondaryLight,
-                          child: Icon(
-                            Icons.medical_services_rounded,
-                            color: AppColors.teal,
-                            size: 36,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                counselor?.name ?? 'Counselor',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.textDark,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                counselor?.specialization ??
-                                    'General Counseling',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 13,
-                                  color: AppColors.textMedium,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: counselor?.isAvailable == true
-                                      ? AppColors.success.withOpacity(0.12)
-                                      : AppColors.textLight.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: Text(
-                                  counselor?.isAvailable == true
-                                      ? 'Available'
-                                      : 'Not Available',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: counselor?.isAvailable == true
-                                        ? AppColors.success
-                                        : AppColors.textMedium,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppColors.textMedium,
+                    height: 1.6,
                   ),
-                  const SizedBox(height: 20),
-                  GridView.count(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.12,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    children: [
-                      _CounselorStatCard(
-                        title: 'Today Session',
-                        value: '$todayConsultations',
-                        icon: Icons.today_rounded,
-                        color: AppColors.primary,
-                      ),
-                      _CounselorStatCard(
-                        title: 'Upcoming',
-                        value: '$upcomingConsultations',
-                        icon: Icons.event_available_rounded,
-                        color: AppColors.teal,
-                      ),
-                      const _CounselorStatCard(
-                        title: 'Unread Chat',
-                        value: '3',
-                        icon: Icons.mark_chat_unread_rounded,
-                        color: AppColors.brandBlue,
-                      ),
-                      const _CounselorStatCard(
-                        title: 'Rating',
-                        value: '5.0',
-                        icon: Icons.star_rounded,
-                        color: AppColors.starYellow,
-                      ),
-                    ],
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    onRetry(showLoading: true);
+                  },
+                  icon: const Icon(
+                    Icons.refresh_rounded,
                   ),
-                  const SizedBox(height: 22),
-                  Text(
-                    'Quick Access',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _QuickAccessCard(
-                    icon: Icons.chat_bubble_rounded,
-                    title: 'Balas Chat User',
-                    subtitle: 'Lihat pesan masuk dan balas konsultasi user.',
-                    color: AppColors.brandBlue,
-                    onTap: () => onNavigate(1),
-                  ),
-                  const SizedBox(height: 10),
-                  _QuickAccessCard(
-                    icon: Icons.calendar_month_rounded,
-                    title: 'Atur Jadwal Available',
-                    subtitle: 'Tentukan hari dan jam konsultasi yang tersedia.',
-                    color: AppColors.teal,
-                    onTap: () => onNavigate(2),
-                  ),
-                  const SizedBox(height: 10),
-                  _QuickAccessCard(
-                    icon: Icons.person_rounded,
-                    title: 'Profile Counselor',
-                    subtitle: 'Lihat dan kelola informasi akun counselor.',
-                    color: AppColors.primary,
-                    onTap: () => onNavigate(3),
-                  ),
-                ],
+                  label: const Text('Try Again'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    final _CounselorDashboardData currentData =
+        data ??
+            const _CounselorDashboardData(
+              fullName: 'Counselor',
+              email: '-',
+              username: '',
+              accountStatus: '',
+              specialization:
+                  'General Counseling',
+              rating: 0,
+              ratingCount: 0,
+              isAvailable: false,
+              todaySessions: 0,
+              upcomingSessions: 0,
+              availableSlots: 0,
+            );
+
+    return ListView(
+      physics:
+          const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        24,
+      ),
+      children: <Widget>[
+        _CounselorTopBar(
+          title: 'Counselor Panel',
+          subtitle:
+              'Welcome back, ${currentData.fullName}',
+          isLoggingOut: isLoggingOut,
+          onLogout: onLogout,
+        ),
+        if (errorMessage != null) ...<Widget>[
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color:
+                  AppColors.error.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              errorMessage!,
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                color: AppColors.error,
               ),
             ),
           ),
         ],
+        const SizedBox(height: 20),
+        _buildProfileCard(currentData),
+        const SizedBox(height: 20),
+        GridView.count(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.12,
+          shrinkWrap: true,
+          physics:
+              const NeverScrollableScrollPhysics(),
+          children: <Widget>[
+            _CounselorStatCard(
+              title: 'Today Session',
+              value:
+                  '${currentData.todaySessions}',
+              icon: Icons.today_rounded,
+              color: AppColors.primary,
+            ),
+            _CounselorStatCard(
+              title: 'Upcoming',
+              value:
+                  '${currentData.upcomingSessions}',
+              icon:
+                  Icons.event_available_rounded,
+              color: AppColors.teal,
+            ),
+            _CounselorStatCard(
+              title: 'Available Slots',
+              value:
+                  '${currentData.availableSlots}',
+              icon: Icons.schedule_rounded,
+              color: AppColors.brandBlue,
+            ),
+            _CounselorStatCard(
+              title:
+                  'Rating (${currentData.ratingCount})',
+              value: currentData.rating
+                  .toStringAsFixed(1),
+              icon: Icons.star_rounded,
+              color: AppColors.starYellow,
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Text(
+          'Quick Access',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _QuickAccessCard(
+          icon: Icons.chat_bubble_rounded,
+          title: 'Balas Chat User',
+          subtitle:
+              'Lihat pesan masuk dan balas konsultasi user.',
+          color: AppColors.brandBlue,
+          onTap: () {
+            onNavigate(1);
+          },
+        ),
+        const SizedBox(height: 10),
+        _QuickAccessCard(
+          icon:
+              Icons.calendar_month_rounded,
+          title: 'Atur Jadwal Konsultasi',
+          subtitle:
+              'Tambah, edit, atau hapus slot konsultasi.',
+          color: AppColors.teal,
+          onTap: () {
+            onNavigate(2);
+          },
+        ),
+        const SizedBox(height: 10),
+        _QuickAccessCard(
+          icon: Icons.person_rounded,
+          title: 'Profile Counselor',
+          subtitle:
+              'Lihat dan kelola informasi akun counselor.',
+          color: AppColors.primary,
+          onTap: () {
+            onNavigate(3);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileCard(
+    _CounselorDashboardData data,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: <Widget>[
+          _CounselorAvatar(
+            avatarUrl: data.avatarUrl,
+            radius: 34,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  data.fullName,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  data.specialization,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppColors.textMedium,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: <Widget>[
+                    _DashboardBadge(
+                      label: data.isAvailable
+                          ? 'Available'
+                          : 'Not Available',
+                      color: data.isAvailable
+                          ? AppColors.success
+                          : AppColors.textMedium,
+                    ),
+                    _DashboardBadge(
+                      label:
+                          _formatStatus(data.accountStatus),
+                      color: _statusColor(
+                        data.accountStatus,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatStatus(String status) {
+    if (status.isEmpty) return 'Unknown';
+
+    return status[0].toUpperCase() +
+        status.substring(1);
+  }
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'active':
+        return AppColors.success;
+      case 'pending':
+        return const Color(0xFFD68A1F);
+      case 'suspended':
+        return AppColors.error;
+      default:
+        return AppColors.textMedium;
+    }
+  }
+}
+
+class _CounselorAvatar extends StatelessWidget {
+  final String? avatarUrl;
+  final double radius;
+
+  const _CounselorAvatar({
+    required this.avatarUrl,
+    required this.radius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (avatarUrl == null ||
+        avatarUrl!.trim().isEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor:
+            AppColors.secondaryLight,
+        child: Icon(
+          Icons.medical_services_rounded,
+          color: AppColors.teal,
+          size: radius,
+        ),
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor:
+          AppColors.secondaryLight,
+      child: ClipOval(
+        child: Image.network(
+          avatarUrl!,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          errorBuilder: (
+            BuildContext context,
+            Object error,
+            StackTrace? stackTrace,
+          ) {
+            return Icon(
+              Icons.medical_services_rounded,
+              color: AppColors.teal,
+              size: radius,
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _DashboardBadge({
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 5,
+      ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.poppins(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
@@ -289,25 +821,31 @@ class _CounselorDashboardHome extends StatelessWidget {
 class _CounselorTopBar extends StatelessWidget {
   final String title;
   final String subtitle;
-  final VoidCallback onLogout;
+  final bool isLoggingOut;
+  final Future<void> Function() onLogout;
 
   const _CounselorTopBar({
     required this.title,
     required this.subtitle,
+    required this.isLoggingOut,
     required this.onLogout,
   });
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final dateText =
-        '${_weekday(now.weekday)}, ${now.day} ${_month(now.month)} ${now.year}';
+    final DateTime now = DateTime.now();
+
+    final String dateText =
+        '${_weekday(now.weekday)}, '
+        '${now.day} ${_month(now.month)} '
+        '${now.year}';
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: <Widget>[
         Row(
-          children: [
+          children: <Widget>[
             Expanded(
               child: Text(
                 title,
@@ -319,14 +857,26 @@ class _CounselorTopBar extends StatelessWidget {
               ),
             ),
             IconButton(
-              onPressed: onLogout,
+              onPressed:
+                  isLoggingOut ? null : onLogout,
               style: IconButton.styleFrom(
-                backgroundColor: AppColors.white.withOpacity(0.92),
+                backgroundColor:
+                    AppColors.white.withOpacity(0.92),
               ),
-              icon: const Icon(
-                Icons.logout_rounded,
-                color: AppColors.error,
-              ),
+              icon: isLoggingOut
+                  ? const SizedBox(
+                      width: 21,
+                      height: 21,
+                      child:
+                          CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primary,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.logout_rounded,
+                      color: AppColors.error,
+                    ),
             ),
           ],
         ),
@@ -340,9 +890,13 @@ class _CounselorTopBar extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 8,
+          ),
           decoration: BoxDecoration(
-            color: AppColors.white.withOpacity(0.88),
+            color:
+                AppColors.white.withOpacity(0.88),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Text(
@@ -359,7 +913,8 @@ class _CounselorTopBar extends StatelessWidget {
   }
 
   String _weekday(int value) {
-    const map = {
+    const Map<int, String> map =
+        <int, String>{
       1: 'Monday',
       2: 'Tuesday',
       3: 'Wednesday',
@@ -368,11 +923,13 @@ class _CounselorTopBar extends StatelessWidget {
       6: 'Saturday',
       7: 'Sunday',
     };
+
     return map[value] ?? '';
   }
 
   String _month(int value) {
-    const map = {
+    const Map<int, String> map =
+        <int, String>{
       1: 'January',
       2: 'February',
       3: 'March',
@@ -386,11 +943,13 @@ class _CounselorTopBar extends StatelessWidget {
       11: 'November',
       12: 'December',
     };
+
     return map[value] ?? '';
   }
 }
 
-class _CounselorStatCard extends StatelessWidget {
+class _CounselorStatCard
+    extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
@@ -410,7 +969,7 @@ class _CounselorStatCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white.withOpacity(0.92),
         borderRadius: BorderRadius.circular(22),
-        boxShadow: [
+        boxShadow: <BoxShadow>[
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
@@ -419,11 +978,13 @@ class _CounselorStatCard extends StatelessWidget {
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: <Widget>[
           CircleAvatar(
             radius: 22,
-            backgroundColor: color.withOpacity(0.12),
+            backgroundColor:
+                color.withOpacity(0.12),
             child: Icon(
               icon,
               color: color,
@@ -441,8 +1002,10 @@ class _CounselorStatCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.poppins(
-              fontSize: 13,
+              fontSize: 12,
               color: AppColors.textMedium,
             ),
           ),
@@ -477,21 +1040,24 @@ class _QuickAccessCard extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.white.withOpacity(0.92),
+            color:
+                AppColors.white.withOpacity(0.92),
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [
+            boxShadow: <BoxShadow>[
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color:
+                    Colors.black.withOpacity(0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),
             ],
           ),
           child: Row(
-            children: [
+            children: <Widget>[
               CircleAvatar(
                 radius: 24,
-                backgroundColor: color.withOpacity(0.12),
+                backgroundColor:
+                    color.withOpacity(0.12),
                 child: Icon(
                   icon,
                   color: color,
@@ -500,14 +1066,16 @@ class _QuickAccessCard extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: <Widget>[
                     Text(
                       title,
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textDark,
+                        color:
+                            AppColors.textDark,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -515,7 +1083,8 @@ class _QuickAccessCard extends StatelessWidget {
                       subtitle,
                       style: GoogleFonts.poppins(
                         fontSize: 12,
-                        color: AppColors.textMedium,
+                        color:
+                            AppColors.textMedium,
                       ),
                     ),
                   ],
@@ -533,92 +1102,45 @@ class _QuickAccessCard extends StatelessWidget {
   }
 }
 
-class _CounselorComingSoonScreen extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
+class _CounselorDashboardData {
+  final String fullName;
+  final String email;
+  final String username;
+  final String accountStatus;
+  final String specialization;
+  final double rating;
+  final int ratingCount;
+  final bool isAvailable;
+  final int todaySessions;
+  final int upcomingSessions;
+  final int availableSlots;
+  final String? avatarUrl;
 
-  const _CounselorComingSoonScreen({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
+  const _CounselorDashboardData({
+    required this.fullName,
+    required this.email,
+    required this.username,
+    required this.accountStatus,
+    required this.specialization,
+    required this.rating,
+    required this.ratingCount,
+    required this.isAvailable,
+    required this.todaySessions,
+    required this.upcomingSessions,
+    required this.availableSlots,
+    this.avatarUrl,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.bgGradientStart,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          const _CounselorSoftBackground(),
-          SafeArea(
-            child: Center(
-              child: Container(
-                margin: const EdgeInsets.all(24),
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppColors.white.withOpacity(0.94),
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircleAvatar(
-                      radius: 36,
-                      backgroundColor: AppColors.primarySoft,
-                      child: Icon(
-                        icon,
-                        size: 38,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      title,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      subtitle,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: AppColors.textMedium,
-                        height: 1.6,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-class _CounselorSoftBackground extends StatelessWidget {
+class _CounselorSoftBackground
+    extends StatelessWidget {
   const _CounselorSoftBackground();
 
   @override
   Widget build(BuildContext context) {
     return const Stack(
       fit: StackFit.expand,
-      children: [
+      children: <Widget>[
         _CounselorBackgroundBlob(
           alignment: Alignment.topLeft,
           widthFactor: 0.78,
@@ -652,7 +1174,8 @@ class _CounselorSoftBackground extends StatelessWidget {
   }
 }
 
-class _CounselorBackgroundBlob extends StatelessWidget {
+class _CounselorBackgroundBlob
+    extends StatelessWidget {
   final Alignment alignment;
   final double widthFactor;
   final double heightFactor;
@@ -669,7 +1192,8 @@ class _CounselorBackgroundBlob extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final Size size =
+        MediaQuery.of(context).size;
 
     return Align(
       alignment: alignment,
@@ -680,7 +1204,7 @@ class _CounselorBackgroundBlob extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
-              colors: [
+              colors: <Color>[
                 color.withOpacity(opacity),
                 color.withOpacity(0),
               ],
