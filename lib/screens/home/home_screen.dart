@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
+import '../../models/content_models.dart';
+import '../../models/models.dart';
+import '../../services/content_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_state.dart';
 import '../../utils/app_data.dart';
@@ -20,6 +23,17 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      context.read<AppState>().loadJournals().catchError((_) {});
+    });
+  }
 
   void _changeTab(int index) {
     setState(() {
@@ -76,45 +90,23 @@ class _HomeContent extends StatelessWidget {
             child: Column(
               children: [
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const SizedBox(width: 200),
-                      ScoreCard(xp: user?.point ?? 0),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.white.withOpacity(0.8),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.local_fire_department,
-                                  color: AppColors.primary,
-                                  size: 16,
-                                ),
-                                Text(
-                                  ' ${user?.streak ?? 0}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
+                      Expanded(
+                        child: Text(
+                          'HealinQ',
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
                           ),
-                          const SizedBox(width: 6),
-                          const _MascotImage(size: 32),
-                        ],
+                        ),
                       ),
+                      const _MascotImage(size: 36),
                     ],
                   ),
                 ),
@@ -179,13 +171,10 @@ class _HomeContent extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        ...state.journals.take(3).map(
-                              (j) => _buildJournalItem(
-                                j.moodTag ?? '😐',
-                                j.title,
-                                j.createdAt,
-                              ),
-                            ),
+                        _buildRecentJournals(
+                          context,
+                          state,
+                        ),
                         const SizedBox(height: 20),
                         Text(
                           'Consultation History',
@@ -232,13 +221,8 @@ class _HomeContent extends StatelessWidget {
                               ),
                             ),
                         const SizedBox(height: 20),
-                        _buildLyricCard(),
+                        const _DailyLyricCard(),
                         const SizedBox(height: 20),
-                        _buildScoreProgress(
-                          user?.point ?? 0,
-                          user?.level ?? 1,
-                          user?.streak ?? 0,
-                        ),
                         const SizedBox(height: 20),
                       ],
                     ),
@@ -249,6 +233,101 @@ class _HomeContent extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildRecentJournals(
+    BuildContext context,
+    AppState state,
+  ) {
+    if (state.isLoadingJournals && state.journals.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 18),
+        child: Center(
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.primary,
+          ),
+        ),
+      );
+    }
+
+    if (state.journalError != null && state.journals.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: <Widget>[
+            const Icon(
+              Icons.error_outline_rounded,
+              color: AppColors.error,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                state.journalError!,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: AppColors.textMedium,
+                ),
+              ),
+            ),
+            IconButton(
+              onPressed: () {
+                context
+                    .read<AppState>()
+                    .loadJournals(force: true)
+                    .catchError((_) {});
+              },
+              icon: const Icon(
+                Icons.refresh_rounded,
+                color: AppColors.primary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (state.journals.isEmpty) {
+      return GestureDetector(
+        onTap: () => onNavigateToTab(3),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            'Belum ada jurnal. Tap untuk mulai menulis.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppColors.textMedium,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: state.journals
+          .take(3)
+          .map(
+            (JournalModel journal) => _buildJournalItem(
+              journal.moodTag ?? '😐',
+              journal.title.isEmpty
+                  ? 'Untitled Note'
+                  : journal.title,
+              journal.createdAt,
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -736,139 +815,165 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildLyricCard() {
-    final lyric = AppData.lyricOfTheDay;
+}
+
+class _DailyLyricCard extends StatefulWidget {
+  const _DailyLyricCard();
+
+  @override
+  State<_DailyLyricCard> createState() =>
+      _DailyLyricCardState();
+}
+
+class _DailyLyricCardState
+    extends State<_DailyLyricCard> {
+  final ContentService _service =
+      ContentService();
+
+  LyricContentModel? _lyric;
+  String? _errorMessage;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLyric();
+  }
+
+  Future<void> _loadLyric() async {
+    try {
+      final LyricContentModel? result =
+          await _service.getLyricOfTheDay();
+
+      if (!mounted) return;
+
+      setState(() {
+        _lyric = result;
+        _errorMessage = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = error
+            .toString()
+            .replaceFirst(
+              'Exception: ',
+              '',
+            )
+            .trim();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: <BoxShadow>[
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 8,
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.music_note_rounded,
-                color: AppColors.primary,
-                size: 18,
-              ),
-              Text(
-                ' Lyric Of The Day',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+      child: _isLoading
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(12),
+                child: CircularProgressIndicator(
                   color: AppColors.primary,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            lyric['title'] ?? '',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textDark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            lyric['lyric'] ?? '',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: AppColors.textMedium,
-              height: 1.6,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildScoreProgress(int xp, int level, int streak) {
-    const nextLevelXp = 1500;
-    final progress = (xp % nextLevelXp) / nextLevelXp;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Your Score Progress',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _scoreRow('Streak', '$streak days', AppColors.primary),
-          const SizedBox(height: 10),
-          _scoreRow('XP', '$xp', AppColors.accent),
-          const SizedBox(height: 10),
-          _scoreRow('Level', '$level', AppColors.teal),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: const AlwaysStoppedAnimation(AppColors.primary),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Next level in ${nextLevelXp - (xp % nextLevelXp)} XP',
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              color: AppColors.textLight,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _scoreRow(String label, String value, Color color) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            color: AppColors.textMedium,
-          ),
-        ),
-        Text(
-          value,
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-        ),
-      ],
+            )
+          : _errorMessage != null
+              ? Column(
+                  children: <Widget>[
+                    Text(
+                      _errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: AppColors.textMedium,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _loadLyric,
+                      icon: const Icon(
+                        Icons.refresh_rounded,
+                      ),
+                      label: const Text('Refresh'),
+                    ),
+                  ],
+                )
+              : _lyric == null
+                  ? Text(
+                      'Belum ada Lyric of the Day aktif.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppColors.textMedium,
+                      ),
+                    )
+                  : Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            const Icon(
+                              Icons.music_note_rounded,
+                              color: AppColors.primary,
+                              size: 18,
+                            ),
+                            Text(
+                              ' Lyric Of The Day',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _lyric!.title,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        Text(
+                          _lyric!.artist,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _lyric!.lyricExcerpt,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppColors.textMedium,
+                            height: 1.6,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
     );
   }
 }
@@ -1000,48 +1105,6 @@ class _ProfileTab extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.white.withOpacity(0.88),
-                      borderRadius: BorderRadius.circular(22),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _statCard(
-                            'Level',
-                            '${user?.level ?? 1}',
-                            AppColors.teal,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _statCard(
-                            'XP',
-                            '${user?.point ?? 0}',
-                            AppColors.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _statCard(
-                            'Streak',
-                            '${user?.streak ?? 0}',
-                            AppColors.accent,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 22),
                   Text(
                     'Account',
                     style: GoogleFonts.poppins(
@@ -1126,36 +1189,6 @@ class _ProfileTab extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _statCard(String label, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: AppColors.textMedium,
             ),
           ),
         ],

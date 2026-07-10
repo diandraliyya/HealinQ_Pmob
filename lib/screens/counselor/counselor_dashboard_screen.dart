@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../theme/app_theme.dart';
+import '../../utils/app_state.dart';
 import 'counselor_chat_list_screen.dart';
 import 'counselor_profile_screen.dart';
 import 'counselor_schedule_screen.dart';
-
-import '../../theme/app_theme.dart';
-import '../../utils/app_state.dart';
 
 class CounselorDashboardScreen extends StatefulWidget {
   const CounselorDashboardScreen({super.key});
@@ -56,9 +56,9 @@ class _CounselorDashboardScreenState
     }
 
     try {
-      final User? user = _supabase.auth.currentUser;
+      final User? authUser = _supabase.auth.currentUser;
 
-      if (user == null) {
+      if (authUser == null) {
         throw Exception(
           'Sesi login tidak ditemukan. Silakan login kembali.',
         );
@@ -71,7 +71,7 @@ class _CounselorDashboardScreenState
             .select(
               'id, username, full_name, email, role, status, avatar_path',
             )
-            .eq('id', user.id)
+            .eq('id', authUser.id)
             .single(),
       );
 
@@ -88,52 +88,210 @@ class _CounselorDashboardScreenState
             .select(
               'specialization, rating, rating_count, is_available',
             )
-            .eq('id', user.id)
+            .eq('id', authUser.id)
             .single(),
       );
 
+      final List<dynamic> rawConsultations = await _supabase
+          .from('consultations')
+          .select(
+            'id, booking_code, user_id, consultation_type, '
+            'scheduled_start, scheduled_end, status, attendance_status',
+          )
+          .eq('counselor_id', authUser.id)
+          .order('scheduled_start', ascending: true);
+
       final List<dynamic> rawSlots = await _supabase
           .from('counselor_slots')
-          .select('id, status, start_at, end_at')
-          .eq('counselor_id', user.id)
+          .select(
+            'id, consultation_type, status, start_at, end_at',
+          )
+          .eq('counselor_id', authUser.id)
           .order('start_at', ascending: true);
 
+      final List<dynamic> rawRooms = await _supabase
+          .from('chat_rooms')
+          .select('id')
+          .eq('counselor_id', authUser.id);
+
       final DateTime now = DateTime.now();
+      final DateTime todayStart = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      );
+      final DateTime tomorrowStart = todayStart.add(
+        const Duration(days: 1),
+      );
 
       int todaySessions = 0;
       int upcomingSessions = 0;
       int availableSlots = 0;
+      int unreadMessages = 0;
 
-      for (final dynamic rawItem in rawSlots) {
+      final List<_DashboardConsultation> consultations =
+          <_DashboardConsultation>[];
+
+      for (final dynamic raw in rawConsultations) {
         final Map<String, dynamic> item =
-            Map<String, dynamic>.from(rawItem as Map);
+            Map<String, dynamic>.from(raw as Map);
 
-        final String status =
-            item['status']?.toString() ?? '';
-
+        final String status = item['status']?.toString() ?? '';
         final DateTime startAt = DateTime.parse(
-          item['start_at'].toString(),
+          item['scheduled_start'].toString(),
+        ).toLocal();
+        final DateTime endAt = DateTime.parse(
+          item['scheduled_end'].toString(),
         ).toLocal();
 
+        final bool isValidSession = <String>{
+          'confirmed',
+          'ongoing',
+          'completed',
+        }.contains(status);
+
+        final bool isToday = !startAt.isBefore(todayStart) &&
+            startAt.isBefore(tomorrowStart);
+
+        if (isValidSession && isToday) {
+          todaySessions++;
+        }
+
+        if (status == 'confirmed' && startAt.isAfter(now)) {
+          upcomingSessions++;
+        }
+
+        final String userId = item['user_id']?.toString() ?? '';
+
+        consultations.add(
+          _DashboardConsultation(
+            id: item['id']?.toString() ?? '',
+            bookingCode: item['booking_code']?.toString() ?? '-',
+            userId: userId,
+            userName: 'User',
+            consultationType:
+                item['consultation_type']?.toString() ?? 'online',
+            scheduledStart: startAt,
+            scheduledEnd: endAt,
+            status: status,
+            attendanceStatus:
+                item['attendance_status']?.toString() ?? '',
+          ),
+        );
+      }
+
+      for (final dynamic raw in rawSlots) {
+        final Map<String, dynamic> item =
+            Map<String, dynamic>.from(raw as Map);
+
+        final String status = item['status']?.toString() ?? '';
         final DateTime endAt = DateTime.parse(
           item['end_at'].toString(),
         ).toLocal();
 
-        final bool isToday =
-            startAt.year == now.year &&
-            startAt.month == now.month &&
-            startAt.day == now.day;
-
-        if (status == 'booked' && isToday) {
-          todaySessions++;
-        }
-
-        if (status == 'booked' && startAt.isAfter(now)) {
-          upcomingSessions++;
-        }
-
         if (status == 'available' && endAt.isAfter(now)) {
           availableSlots++;
+        }
+      }
+
+      if (rawRooms.isNotEmpty) {
+        final List<String> roomIds = rawRooms
+            .map(
+              (dynamic raw) => Map<String, dynamic>.from(
+                raw as Map,
+              )['id']?.toString() ?? '',
+            )
+            .where((String id) => id.isNotEmpty)
+            .toList();
+
+        if (roomIds.isNotEmpty) {
+          final List<dynamic> unreadRows = await _supabase
+              .from('messages')
+              .select('id')
+              .inFilter('room_id', roomIds)
+              .neq('sender_id', authUser.id)
+              .isFilter('read_at', null);
+
+          unreadMessages = unreadRows.length;
+        }
+      }
+
+      final Map<String, String> userNameById =
+          <String, String>{};
+
+      final List<String> consultationIds =
+          consultations
+              .map(
+                (_DashboardConsultation item) =>
+                    item.id,
+              )
+              .where(
+                (String id) => id.isNotEmpty,
+              )
+              .toList();
+
+      if (consultationIds.isNotEmpty) {
+        final List<dynamic> rawUsers =
+            await _supabase.rpc(
+          'get_my_consultation_clients',
+          params: <String, dynamic>{
+            'p_consultation_ids':
+                consultationIds,
+          },
+        );
+
+        for (final dynamic raw in rawUsers) {
+          final Map<String, dynamic> item =
+              Map<String, dynamic>.from(
+            raw as Map,
+          );
+
+          final String id =
+              item['user_id']?.toString() ??
+                  '';
+
+          final String name =
+              item['full_name']
+                      ?.toString()
+                      .trim() ??
+                  '';
+
+          if (id.isNotEmpty) {
+            userNameById[id] = name.isEmpty
+                ? 'User'
+                : name;
+          }
+        }
+      }
+
+      final List<_DashboardConsultation> namedConsultations =
+          consultations
+              .map(
+                (_DashboardConsultation item) => item.copyWith(
+                  userName: userNameById[item.userId] ?? 'User',
+                ),
+              )
+              .toList();
+
+      _DashboardConsultation? nextSession;
+
+      for (final _DashboardConsultation item
+          in namedConsultations) {
+        final bool canBecomeNext = <String>{
+              'confirmed',
+              'ongoing',
+            }.contains(item.status) &&
+            item.scheduledEnd.isAfter(now);
+
+        if (!canBecomeNext) {
+          continue;
+        }
+
+        if (nextSession == null ||
+            item.scheduledStart.isBefore(
+              nextSession.scheduledStart,
+            )) {
+          nextSession = item;
         }
       }
 
@@ -153,7 +311,7 @@ class _CounselorDashboardScreenState
             profile['full_name']?.toString().trim().isNotEmpty == true
                 ? profile['full_name'].toString().trim()
                 : 'Counselor',
-        email: profile['email']?.toString() ?? user.email ?? '-',
+        email: profile['email']?.toString() ?? authUser.email ?? '-',
         username: profile['username']?.toString() ?? '',
         accountStatus: profile['status']?.toString() ?? '',
         specialization:
@@ -176,7 +334,9 @@ class _CounselorDashboardScreenState
         todaySessions: todaySessions,
         upcomingSessions: upcomingSessions,
         availableSlots: availableSlots,
+        unreadMessages: unreadMessages,
         avatarUrl: avatarUrl,
+        nextSession: nextSession,
       );
 
       if (!mounted) return;
@@ -273,9 +433,7 @@ class _CounselorDashboardScreenState
   }
 
   String _cleanErrorMessage(String message) {
-    return message
-        .replaceFirst('Exception: ', '')
-        .trim();
+    return message.replaceFirst('Exception: ', '').trim();
   }
 
   double _toDouble(dynamic value) {
@@ -331,39 +489,23 @@ class _CounselorDashboardScreenState
         },
         destinations: const <NavigationDestination>[
           NavigationDestination(
-            icon: Icon(
-              Icons.dashboard_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.dashboard_rounded,
-            ),
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard_rounded),
             label: 'Dashboard',
           ),
           NavigationDestination(
-            icon: Icon(
-              Icons.chat_bubble_outline_rounded,
-            ),
-            selectedIcon: Icon(
-              Icons.chat_bubble_rounded,
-            ),
+            icon: Icon(Icons.chat_bubble_outline_rounded),
+            selectedIcon: Icon(Icons.chat_bubble_rounded),
             label: 'Chat',
           ),
           NavigationDestination(
-            icon: Icon(
-              Icons.calendar_month_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.calendar_month_rounded,
-            ),
+            icon: Icon(Icons.calendar_month_outlined),
+            selectedIcon: Icon(Icons.calendar_month_rounded),
             label: 'Schedule',
           ),
           NavigationDestination(
-            icon: Icon(
-              Icons.person_outline_rounded,
-            ),
-            selectedIcon: Icon(
-              Icons.person_rounded,
-            ),
+            icon: Icon(Icons.person_outline_rounded),
+            selectedIcon: Icon(Icons.person_rounded),
             label: 'Profile',
           ),
         ],
@@ -372,8 +514,7 @@ class _CounselorDashboardScreenState
   }
 }
 
-class _CounselorDashboardHome
-    extends StatelessWidget {
+class _CounselorDashboardHome extends StatelessWidget {
   final _CounselorDashboardData? data;
   final bool isLoading;
   final bool isLoggingOut;
@@ -382,8 +523,7 @@ class _CounselorDashboardHome
   final Future<void> Function({
     bool showLoading,
   }) onRetry;
-  final Future<void> Function(int index)
-      onNavigate;
+  final Future<void> Function(int index) onNavigate;
   final Future<void> Function() onLogout;
 
   const _CounselorDashboardHome({
@@ -420,8 +560,7 @@ class _CounselorDashboardHome
   Widget _buildBody(BuildContext context) {
     if (isLoading && data == null) {
       return ListView(
-        physics:
-            const AlwaysScrollableScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(),
         children: const <Widget>[
           SizedBox(height: 260),
           Center(
@@ -435,55 +574,15 @@ class _CounselorDashboardHome
 
     if (errorMessage != null && data == null) {
       return ListView(
-        physics:
-            const AlwaysScrollableScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(20),
         children: <Widget>[
           const SizedBox(height: 100),
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.white.withOpacity(0.95),
-              borderRadius: BorderRadius.circular(26),
-            ),
-            child: Column(
-              children: <Widget>[
-                const Icon(
-                  Icons.error_outline_rounded,
-                  size: 52,
-                  color: AppColors.error,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Failed to load dashboard',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppColors.textMedium,
-                    height: 1.6,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    onRetry(showLoading: true);
-                  },
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                  ),
-                  label: const Text('Try Again'),
-                ),
-              ],
-            ),
+          _DashboardErrorCard(
+            message: errorMessage!,
+            onRetry: () {
+              onRetry(showLoading: true);
+            },
           ),
         ],
       );
@@ -496,30 +595,28 @@ class _CounselorDashboardHome
               email: '-',
               username: '',
               accountStatus: '',
-              specialization:
-                  'General Counseling',
+              specialization: 'General Counseling',
               rating: 0,
               ratingCount: 0,
               isAvailable: false,
               todaySessions: 0,
               upcomingSessions: 0,
               availableSlots: 0,
+              unreadMessages: 0,
             );
 
     return ListView(
-      physics:
-          const AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
         16,
         16,
         16,
-        24,
+        26,
       ),
       children: <Widget>[
         _CounselorTopBar(
           title: 'Counselor Panel',
-          subtitle:
-              'Welcome back, ${currentData.fullName}',
+          subtitle: 'Welcome back, ${currentData.fullName}',
           isLoggingOut: isLoggingOut,
           onLogout: onLogout,
         ),
@@ -528,8 +625,7 @@ class _CounselorDashboardHome
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color:
-                  AppColors.error.withOpacity(0.08),
+              color: AppColors.error.withOpacity(0.08),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Text(
@@ -550,40 +646,49 @@ class _CounselorDashboardHome
           mainAxisSpacing: 12,
           childAspectRatio: 1.12,
           shrinkWrap: true,
-          physics:
-              const NeverScrollableScrollPhysics(),
+          physics: const NeverScrollableScrollPhysics(),
           children: <Widget>[
             _CounselorStatCard(
-              title: 'Today Session',
-              value:
-                  '${currentData.todaySessions}',
+              title: 'Today Sessions',
+              value: '${currentData.todaySessions}',
               icon: Icons.today_rounded,
               color: AppColors.primary,
             ),
             _CounselorStatCard(
               title: 'Upcoming',
-              value:
-                  '${currentData.upcomingSessions}',
-              icon:
-                  Icons.event_available_rounded,
+              value: '${currentData.upcomingSessions}',
+              icon: Icons.event_available_rounded,
               color: AppColors.teal,
             ),
             _CounselorStatCard(
               title: 'Available Slots',
-              value:
-                  '${currentData.availableSlots}',
+              value: '${currentData.availableSlots}',
               icon: Icons.schedule_rounded,
               color: AppColors.brandBlue,
             ),
             _CounselorStatCard(
-              title:
-                  'Rating (${currentData.ratingCount})',
-              value: currentData.rating
-                  .toStringAsFixed(1),
-              icon: Icons.star_rounded,
+              title: 'Unread Chats',
+              value: '${currentData.unreadMessages}',
+              icon: Icons.mark_chat_unread_rounded,
               color: AppColors.starYellow,
             ),
           ],
+        ),
+        const SizedBox(height: 22),
+        Text(
+          'Next Consultation',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _NextSessionCard(
+          consultation: currentData.nextSession,
+          onOpenSchedule: () {
+            onNavigate(2);
+          },
         ),
         const SizedBox(height: 22),
         Text(
@@ -598,8 +703,9 @@ class _CounselorDashboardHome
         _QuickAccessCard(
           icon: Icons.chat_bubble_rounded,
           title: 'Balas Chat User',
-          subtitle:
-              'Lihat pesan masuk dan balas konsultasi user.',
+          subtitle: currentData.unreadMessages > 0
+              ? '${currentData.unreadMessages} pesan belum dibaca.'
+              : 'Lihat dan balas konsultasi online user.',
           color: AppColors.brandBlue,
           onTap: () {
             onNavigate(1);
@@ -607,11 +713,10 @@ class _CounselorDashboardHome
         ),
         const SizedBox(height: 10),
         _QuickAccessCard(
-          icon:
-              Icons.calendar_month_rounded,
+          icon: Icons.calendar_month_rounded,
           title: 'Atur Jadwal Konsultasi',
           subtitle:
-              'Tambah, edit, atau hapus slot konsultasi.',
+              'Tambah, lihat, atau nonaktifkan slot konsultasi.',
           color: AppColors.teal,
           onTap: () {
             onNavigate(2);
@@ -658,14 +763,12 @@ class _CounselorDashboardHome
           const SizedBox(width: 14),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
                   data.fullName,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -676,8 +779,7 @@ class _CounselorDashboardHome
                 Text(
                   data.specialization,
                   maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.poppins(
                     fontSize: 13,
                     color: AppColors.textMedium,
@@ -697,11 +799,15 @@ class _CounselorDashboardHome
                           : AppColors.textMedium,
                     ),
                     _DashboardBadge(
-                      label:
-                          _formatStatus(data.accountStatus),
+                      label: _formatStatus(data.accountStatus),
                       color: _statusColor(
                         data.accountStatus,
                       ),
+                    ),
+                    _DashboardBadge(
+                      label:
+                          '★ ${data.rating.toStringAsFixed(1)} (${data.ratingCount})',
+                      color: AppColors.starYellow,
                     ),
                   ],
                 ),
@@ -716,8 +822,7 @@ class _CounselorDashboardHome
   String _formatStatus(String status) {
     if (status.isEmpty) return 'Unknown';
 
-    return status[0].toUpperCase() +
-        status.substring(1);
+    return status[0].toUpperCase() + status.substring(1);
   }
 
   Color _statusColor(String status) {
@@ -734,6 +839,186 @@ class _CounselorDashboardHome
   }
 }
 
+class _NextSessionCard extends StatelessWidget {
+  final _DashboardConsultation? consultation;
+  final VoidCallback onOpenSchedule;
+
+  const _NextSessionCard({
+    required this.consultation,
+    required this.onOpenSchedule,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final _DashboardConsultation? item = consultation;
+
+    if (item == null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.white.withOpacity(0.92),
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Column(
+          children: <Widget>[
+            const Icon(
+              Icons.event_busy_rounded,
+              size: 42,
+              color: AppColors.textLight,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Belum ada konsultasi berikutnya',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Booking yang sudah dikonfirmasi akan tampil di sini.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 10,
+                color: AppColors.textMedium,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final bool isOnline = item.consultationType == 'online';
+    final bool isOngoing = item.status == 'ongoing';
+
+    return InkWell(
+      onTap: onOpenSchedule,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(17),
+        decoration: BoxDecoration(
+          color: AppColors.white.withOpacity(0.94),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          children: <Widget>[
+            CircleAvatar(
+              radius: 28,
+              backgroundColor: isOnline
+                  ? AppColors.primarySoft
+                  : AppColors.secondaryLight,
+              child: Icon(
+                isOnline
+                    ? Icons.chat_bubble_rounded
+                    : Icons.location_on_rounded,
+                color: isOnline
+                    ? AppColors.primary
+                    : AppColors.teal,
+                size: 27,
+              ),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          item.userName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: (isOngoing
+                                  ? AppColors.success
+                                  : AppColors.primary)
+                              .withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          isOngoing ? 'ONGOING' : 'CONFIRMED',
+                          style: GoogleFonts.poppins(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w700,
+                            color: isOngoing
+                                ? AppColors.success
+                                : AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${isOnline ? 'Online' : 'Offline'} • ${item.bookingCode}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      color: AppColors.textMedium,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: <Widget>[
+                      const Icon(
+                        Icons.schedule_rounded,
+                        size: 15,
+                        color: AppColors.textLight,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          '${DateFormat('EEE, d MMM yyyy').format(item.scheduledStart)} • '
+                          '${DateFormat('HH:mm').format(item.scheduledStart)}–'
+                          '${DateFormat('HH:mm').format(item.scheduledEnd)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 5),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textLight,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CounselorAvatar extends StatelessWidget {
   final String? avatarUrl;
   final double radius;
@@ -745,12 +1030,10 @@ class _CounselorAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (avatarUrl == null ||
-        avatarUrl!.trim().isEmpty) {
+    if (avatarUrl == null || avatarUrl!.trim().isEmpty) {
       return CircleAvatar(
         radius: radius,
-        backgroundColor:
-            AppColors.secondaryLight,
+        backgroundColor: AppColors.secondaryLight,
         child: Icon(
           Icons.medical_services_rounded,
           color: AppColors.teal,
@@ -761,8 +1044,7 @@ class _CounselorAvatar extends StatelessWidget {
 
     return CircleAvatar(
       radius: radius,
-      backgroundColor:
-          AppColors.secondaryLight,
+      backgroundColor: AppColors.secondaryLight,
       child: ClipOval(
         child: Image.network(
           avatarUrl!,
@@ -835,14 +1117,8 @@ class _CounselorTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final DateTime now = DateTime.now();
 
-    final String dateText =
-        '${_weekday(now.weekday)}, '
-        '${now.day} ${_month(now.month)} '
-        '${now.year}';
-
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Row(
           children: <Widget>[
@@ -857,18 +1133,16 @@ class _CounselorTopBar extends StatelessWidget {
               ),
             ),
             IconButton(
-              onPressed:
-                  isLoggingOut ? null : onLogout,
+              tooltip: 'Logout',
+              onPressed: isLoggingOut ? null : onLogout,
               style: IconButton.styleFrom(
-                backgroundColor:
-                    AppColors.white.withOpacity(0.92),
+                backgroundColor: AppColors.white.withOpacity(0.92),
               ),
               icon: isLoggingOut
                   ? const SizedBox(
                       width: 21,
                       height: 21,
-                      child:
-                          CircularProgressIndicator(
+                      child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: AppColors.primary,
                       ),
@@ -895,12 +1169,11 @@ class _CounselorTopBar extends StatelessWidget {
             vertical: 8,
           ),
           decoration: BoxDecoration(
-            color:
-                AppColors.white.withOpacity(0.88),
+            color: AppColors.white.withOpacity(0.88),
             borderRadius: BorderRadius.circular(18),
           ),
           child: Text(
-            dateText,
+            DateFormat('EEEE, d MMMM yyyy').format(now),
             style: GoogleFonts.poppins(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -911,45 +1184,9 @@ class _CounselorTopBar extends StatelessWidget {
       ],
     );
   }
-
-  String _weekday(int value) {
-    const Map<int, String> map =
-        <int, String>{
-      1: 'Monday',
-      2: 'Tuesday',
-      3: 'Wednesday',
-      4: 'Thursday',
-      5: 'Friday',
-      6: 'Saturday',
-      7: 'Sunday',
-    };
-
-    return map[value] ?? '';
-  }
-
-  String _month(int value) {
-    const Map<int, String> map =
-        <int, String>{
-      1: 'January',
-      2: 'February',
-      3: 'March',
-      4: 'April',
-      5: 'May',
-      6: 'June',
-      7: 'July',
-      8: 'August',
-      9: 'September',
-      10: 'October',
-      11: 'November',
-      12: 'December',
-    };
-
-    return map[value] ?? '';
-  }
 }
 
-class _CounselorStatCard
-    extends StatelessWidget {
+class _CounselorStatCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
@@ -978,13 +1215,11 @@ class _CounselorStatCard
         ],
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           CircleAvatar(
             radius: 22,
-            backgroundColor:
-                color.withOpacity(0.12),
+            backgroundColor: color.withOpacity(0.12),
             child: Icon(
               icon,
               color: color,
@@ -1040,13 +1275,11 @@ class _QuickAccessCard extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color:
-                AppColors.white.withOpacity(0.92),
+            color: AppColors.white.withOpacity(0.92),
             borderRadius: BorderRadius.circular(20),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color:
-                    Colors.black.withOpacity(0.04),
+                color: Colors.black.withOpacity(0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),
@@ -1056,8 +1289,7 @@ class _QuickAccessCard extends StatelessWidget {
             children: <Widget>[
               CircleAvatar(
                 radius: 24,
-                backgroundColor:
-                    color.withOpacity(0.12),
+                backgroundColor: color.withOpacity(0.12),
                 child: Icon(
                   icon,
                   color: color,
@@ -1066,16 +1298,14 @@ class _QuickAccessCard extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
                       title,
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
-                        color:
-                            AppColors.textDark,
+                        color: AppColors.textDark,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -1083,8 +1313,7 @@ class _QuickAccessCard extends StatelessWidget {
                       subtitle,
                       style: GoogleFonts.poppins(
                         fontSize: 12,
-                        color:
-                            AppColors.textMedium,
+                        color: AppColors.textMedium,
                       ),
                     ),
                   ],
@@ -1102,6 +1331,61 @@ class _QuickAccessCard extends StatelessWidget {
   }
 }
 
+class _DashboardErrorCard extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _DashboardErrorCard({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(26),
+      ),
+      child: Column(
+        children: <Widget>[
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 52,
+            color: AppColors.error,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Failed to load dashboard',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppColors.textMedium,
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Try Again'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CounselorDashboardData {
   final String fullName;
   final String email;
@@ -1114,7 +1398,9 @@ class _CounselorDashboardData {
   final int todaySessions;
   final int upcomingSessions;
   final int availableSlots;
+  final int unreadMessages;
   final String? avatarUrl;
+  final _DashboardConsultation? nextSession;
 
   const _CounselorDashboardData({
     required this.fullName,
@@ -1128,12 +1414,53 @@ class _CounselorDashboardData {
     required this.todaySessions,
     required this.upcomingSessions,
     required this.availableSlots,
+    required this.unreadMessages,
     this.avatarUrl,
+    this.nextSession,
   });
 }
 
-class _CounselorSoftBackground
-    extends StatelessWidget {
+class _DashboardConsultation {
+  final String id;
+  final String bookingCode;
+  final String userId;
+  final String userName;
+  final String consultationType;
+  final DateTime scheduledStart;
+  final DateTime scheduledEnd;
+  final String status;
+  final String attendanceStatus;
+
+  const _DashboardConsultation({
+    required this.id,
+    required this.bookingCode,
+    required this.userId,
+    required this.userName,
+    required this.consultationType,
+    required this.scheduledStart,
+    required this.scheduledEnd,
+    required this.status,
+    required this.attendanceStatus,
+  });
+
+  _DashboardConsultation copyWith({
+    String? userName,
+  }) {
+    return _DashboardConsultation(
+      id: id,
+      bookingCode: bookingCode,
+      userId: userId,
+      userName: userName ?? this.userName,
+      consultationType: consultationType,
+      scheduledStart: scheduledStart,
+      scheduledEnd: scheduledEnd,
+      status: status,
+      attendanceStatus: attendanceStatus,
+    );
+  }
+}
+
+class _CounselorSoftBackground extends StatelessWidget {
   const _CounselorSoftBackground();
 
   @override
@@ -1174,8 +1501,7 @@ class _CounselorSoftBackground
   }
 }
 
-class _CounselorBackgroundBlob
-    extends StatelessWidget {
+class _CounselorBackgroundBlob extends StatelessWidget {
   final Alignment alignment;
   final double widthFactor;
   final double heightFactor;
@@ -1192,8 +1518,7 @@ class _CounselorBackgroundBlob
 
   @override
   Widget build(BuildContext context) {
-    final Size size =
-        MediaQuery.of(context).size;
+    final Size size = MediaQuery.of(context).size;
 
     return Align(
       alignment: alignment,

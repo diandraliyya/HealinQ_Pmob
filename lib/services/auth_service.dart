@@ -49,8 +49,6 @@ class AuthService {
 
     final confirmationRequired = response.session == null;
 
-    // Apabila email confirmation dimatikan, signup otomatis membuat session.
-    // Karena alur aplikasi ingin kembali ke login, session tersebut dikeluarkan.
     if (response.session != null) {
       await _supabase.auth.signOut();
     }
@@ -77,46 +75,53 @@ class AuthService {
       throw Exception('Email atau password salah.');
     }
 
-    final profile = await _supabase
-        .from('profiles')
-        .select('''
-          id,
-          username,
-          full_name,
-          email,
-          role,
-          status,
-          phone,
-          address,
-          avatar_path,
-          bio,
-          points,
-          level,
-          streak,
-          created_at
-        ''')
-        .eq('id', user.id)
-        .single();
+    try {
+      final profile = await _supabase
+          .from('profiles')
+          .select('''
+            id,
+            username,
+            full_name,
+            email,
+            role,
+            status,
+            phone,
+            address,
+            avatar_path,
+            bio,
+            birth_date,
+            gender,
+            created_at,
+            updated_at
+          ''')
+          .eq('id', user.id)
+          .single();
 
-    final status = profile['status'] as String?;
-    final role = profile['role'] as String?;
+      final status = profile['status'] as String?;
+      final role = profile['role'] as String?;
 
-    if (status == 'inactive') {
-      await _supabase.auth.signOut();
-      throw Exception('Akun kamu sedang tidak aktif.');
+      if (status == 'inactive') {
+        await _supabase.auth.signOut();
+        throw Exception('Akun kamu sedang tidak aktif.');
+      }
+
+      if (status == 'suspended') {
+        await _supabase.auth.signOut();
+        throw Exception('Akun kamu sedang ditangguhkan.');
+      }
+
+      if (role == null) {
+        await _supabase.auth.signOut();
+        throw Exception('Role akun tidak ditemukan.');
+      }
+
+      return profile;
+    } catch (_) {
+      if (_supabase.auth.currentUser != null) {
+        await _supabase.auth.signOut();
+      }
+      rethrow;
     }
-
-    if (status == 'suspended') {
-      await _supabase.auth.signOut();
-      throw Exception('Akun kamu sedang ditangguhkan.');
-    }
-
-    if (role == null) {
-      await _supabase.auth.signOut();
-      throw Exception('Role akun tidak ditemukan.');
-    }
-
-    return profile;
   }
 
   Future<Map<String, dynamic>?> getCurrentProfile() async {
@@ -139,10 +144,10 @@ class AuthService {
           address,
           avatar_path,
           bio,
-          points,
-          level,
-          streak,
-          created_at
+          birth_date,
+          gender,
+          created_at,
+          updated_at
         ''')
         .eq('id', user.id)
         .maybeSingle();

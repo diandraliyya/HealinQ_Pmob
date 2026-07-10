@@ -1,13 +1,10 @@
 class ConsultationSlotModel {
   final String id;
-
   final DateTime startAt;
-
   final DateTime endAt;
-
   final String consultationType;
 
-  ConsultationSlotModel({
+  const ConsultationSlotModel({
     required this.id,
     required this.startAt,
     required this.endAt,
@@ -15,18 +12,23 @@ class ConsultationSlotModel {
   });
 
   factory ConsultationSlotModel.fromMap(
-      Map<String, dynamic> map) {
+    Map<String, dynamic> map,
+  ) {
     return ConsultationSlotModel(
-      id: map['id'],
-
-      startAt:
-          DateTime.parse(map['start_at']),
-
-      endAt:
-          DateTime.parse(map['end_at']),
-
+      id: map['id']?.toString() ?? '',
+      startAt: DateTime.parse(
+        map['start_at'].toString(),
+      ).toLocal(),
+      endAt: DateTime.parse(
+        map['end_at'].toString(),
+      ).toLocal(),
       consultationType:
-          map['consultation_type'],
+          map['consultation_type']?.toString() ??
+              'online',
     );
+  }
+
+  int get durationMinutes {
+    return endAt.difference(startAt).inMinutes;
   }
 }

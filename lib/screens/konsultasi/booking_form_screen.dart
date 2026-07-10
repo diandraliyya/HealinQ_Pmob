@@ -67,6 +67,17 @@ class _BookingFormScreenState extends State<BookingFormScreen> {
 
       if (!mounted) return;
 
+      result.sort(
+        (
+          ConsultationSlotModel first,
+          ConsultationSlotModel second,
+        ) {
+          return first.startAt.compareTo(
+            second.startAt,
+          );
+        },
+      );
+
       setState(() {
         _slots = result;
 

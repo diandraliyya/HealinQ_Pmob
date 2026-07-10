@@ -164,18 +164,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final File? proofFile = _proofFile;
 
     if (selectedMethod == null) {
-      _showMessage(
-        'Pilih metode pembayaran terlebih dahulu.',
-        isError: true,
-      );
+      _showMessage('Pilih metode pembayaran terlebih dahulu.', isError: true);
       return;
     }
 
     if (proofFile == null) {
-      _showMessage(
-        'Unggah bukti pembayaran terlebih dahulu.',
-        isError: true,
-      );
+      _showMessage('Unggah bukti pembayaran terlebih dahulu.', isError: true);
       return;
     }
 
@@ -185,28 +179,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _isSubmitting = true;
     });
 
+    String? uploadedProofPath;
+
     try {
-      final String proofPath = await _paymentService.uploadPaymentProof(
+      await _paymentService.ensurePaymentCanBeSubmitted(
+        widget.consultationId,
+      );
+
+      uploadedProofPath = await _paymentService.uploadPaymentProof(
         paymentId: widget.paymentId,
         file: proofFile,
       );
 
       await _paymentService.submitPayment(
         consultationId: widget.consultationId,
-        proofPath: proofPath,
+        proofPath: uploadedProofPath,
         methodId: selectedMethod['id'].toString(),
       );
 
       if (!mounted) return;
-
       await _showSuccessDialog();
     } catch (error) {
+      if (uploadedProofPath != null) {
+        await _paymentService.deletePaymentProofQuietly(uploadedProofPath);
+      }
       if (!mounted) return;
-
-      _showMessage(
-        _cleanError(error),
-        isError: true,
-      );
+      _showMessage(_cleanError(error), isError: true);
     } finally {
       if (mounted) {
         setState(() {

@@ -4,11 +4,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
+import '../../models/content_models.dart';
+import '../../services/content_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_state.dart';
-import '../../utils/app_data.dart';
 import '../../models/models.dart';
-import '../../widgets/common_widgets.dart';
 
 class SelfHealingScreen extends StatefulWidget {
   const SelfHealingScreen({super.key});
@@ -18,11 +18,91 @@ class SelfHealingScreen extends StatefulWidget {
 }
 
 class _SelfHealingScreenState extends State<SelfHealingScreen> {
+  final ContentService _contentService =
+      ContentService();
+
+  List<JarItemContentModel> _jarItems =
+      <JarItemContentModel>[];
+
   String? _jarMessage;
+  String? _jarError;
+  bool _isLoadingJar = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadJarItems();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      context.read<AppState>().loadJournals().catchError((_) {});
+    });
+  }
+
+  Future<void> _refreshAll() async {
+    await Future.wait<void>(<Future<void>>[
+      _loadJarItems(),
+      context.read<AppState>().loadJournals(force: true),
+    ]);
+  }
+
+  Future<void> _loadJarItems() async {
+    try {
+      final List<JarItemContentModel> result =
+          await _contentService.getActiveJarItems();
+
+      if (!mounted) return;
+
+      setState(() {
+        _jarItems = result;
+        _jarError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _jarError = error
+            .toString()
+            .replaceFirst(
+              'Exception: ',
+              '',
+            )
+            .trim();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingJar = false;
+        });
+      }
+    }
+  }
 
   void _pickFromJar() {
-    final random = Random();
-    final item = AppData.jarItems[random.nextInt(AppData.jarItems.length)];
+    if (_isLoadingJar) {
+      return;
+    }
+
+    if (_jarItems.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              _jarError ??
+                  'Belum ada Jar of Happiness yang aktif.',
+            ),
+            backgroundColor: AppColors.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      return;
+    }
+
+    final Random random = Random();
+    final JarItemContentModel item =
+        _jarItems[random.nextInt(_jarItems.length)];
 
     final popupColors = [
       const Color(0xFFFCE4EC),
@@ -38,7 +118,7 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
     final popupBg = popupColors[random.nextInt(popupColors.length)];
 
     setState(() {
-      _jarMessage = item['content'];
+      _jarMessage = item.content;
     });
 
     showDialog(
@@ -157,19 +237,41 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 12,
+              ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Self Healing',
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
+                  Expanded(
+                    child: Text(
+                      'Self Healing',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Refresh Data',
+                    onPressed: _isLoadingJar || state.isLoadingJournals
+                        ? null
+                        : () {
+                            _refreshAll().catchError((error) {
+                              if (!mounted) return;
+
+                              _showMessage(
+                                _cleanError(error),
+                                isError: true,
+                              );
+                            });
+                          },
+                    icon: const Icon(
+                      Icons.refresh_rounded,
                       color: AppColors.primary,
                     ),
                   ),
-                  ScoreCard(xp: state.currentUser?.point ?? 0),
                 ],
               ),
             ),
@@ -187,25 +289,38 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
                     const SizedBox(height: 16),
                     _buildQuickMessage(),
                     const SizedBox(height: 16),
-                    _buildSectionTitle(
-                      title: 'Today\'s Notes',
-                      icon: Icons.today_rounded,
-                    ),
-                    const SizedBox(height: 10),
-                    if (todayJournals.isEmpty)
-                      _buildEmptyTodayJournal()
-                    else
-                      ...todayJournals.map((j) => _buildJournalCard(j)),
-                    const SizedBox(height: 20),
-                    _buildSectionTitle(
-                      title: 'Track Record Notes',
-                      icon: Icons.history_rounded,
-                    ),
-                    const SizedBox(height: 10),
-                    if (previousJournals.isEmpty)
-                      _buildEmptyTrackRecord()
-                    else
-                      ...previousJournals.map((j) => _buildJournalCard(j)),
+                    if (state.isLoadingJournals && journals.isEmpty)
+                      _buildJournalLoading()
+                    else if (state.journalError != null &&
+                        journals.isEmpty)
+                      _buildJournalError(state.journalError!)
+                    else ...<Widget>[
+                      _buildSectionTitle(
+                        title: 'Today\'s Notes',
+                        icon: Icons.today_rounded,
+                      ),
+                      const SizedBox(height: 10),
+                      if (todayJournals.isEmpty)
+                        _buildEmptyTodayJournal()
+                      else
+                        ...todayJournals.map(
+                          (JournalModel journal) =>
+                              _buildJournalCard(journal),
+                        ),
+                      const SizedBox(height: 20),
+                      _buildSectionTitle(
+                        title: 'Track Record Notes',
+                        icon: Icons.history_rounded,
+                      ),
+                      const SizedBox(height: 10),
+                      if (previousJournals.isEmpty)
+                        _buildEmptyTrackRecord()
+                      else
+                        ...previousJournals.map(
+                          (JournalModel journal) =>
+                              _buildJournalCard(journal),
+                        ),
+                    ],
                     const SizedBox(height: 28),
                   ],
                 ),
@@ -213,6 +328,68 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildJournalLoading() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Center(
+        child: CircularProgressIndicator(
+          color: AppColors.primary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildJournalError(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        children: <Widget>[
+          const Icon(
+            Icons.error_outline_rounded,
+            color: AppColors.error,
+            size: 38,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppColors.textMedium,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              context
+                  .read<AppState>()
+                  .loadJournals(force: true)
+                  .catchError((error) {
+                if (!mounted) return;
+                _showMessage(
+                  _cleanError(error),
+                  isError: true,
+                );
+              });
+            },
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Try Again'),
+          ),
+        ],
       ),
     );
   }
@@ -239,7 +416,11 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
               ),
             ),
             Text(
-              'Pick one to brighten up your day',
+              _isLoadingJar
+                  ? 'Loading happiness jar...'
+                  : _jarItems.isEmpty
+                      ? 'Belum ada content aktif'
+                      : 'Pick one to brighten up your day',
               style: GoogleFonts.poppins(
                 fontSize: 13,
                 color: AppColors.textMedium,
@@ -655,300 +836,575 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
   }
 
   void _showAddJournalDialog(BuildContext context) {
-    final titleCtrl = TextEditingController();
-    final contentCtrl = TextEditingController();
-    String selectedMood = '😊';
-    final moods = ['😊', '😔', '😢', '😡', '😌', '🥰', '😰', '😴'];
+    _showJournalEditor();
+  }
 
-    showModalBottomSheet(
+  Future<void> _showJournalEditor({
+    JournalModel? journal,
+  }) async {
+    final bool isEditing = journal != null;
+    final TextEditingController titleCtrl = TextEditingController(
+      text: journal?.title ?? '',
+    );
+    final TextEditingController contentCtrl = TextEditingController(
+      text: journal?.content ?? '',
+    );
+
+    String selectedMood = journal?.moodTag ?? '😊';
+    bool isSaving = false;
+
+    const List<String> moods = <String>[
+      '😊', '😔', '😢', '😡', '😌', '🥰', '😰', '😴',
+    ];
+
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Container(
-          height: MediaQuery.of(context).size.height * 0.85,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder: (
+            BuildContext context,
+            void Function(void Function()) setModalState,
+          ) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.88,
+              decoration: const BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+              ),
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 24,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    isEditing
+                        ? 'Edit Journal Entry'
+                        : 'New Journal Entry',
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isEditing
+                        ? 'Perbarui catatan dan perasaanmu.'
+                        : 'Write whatever you feel today.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: AppColors.textMedium,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'How are you feeling?',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: moods.map((String mood) {
+                      final bool isSelected = selectedMood == mood;
+
+                      return GestureDetector(
+                        onTap: isSaving
+                            ? null
+                            : () {
+                                setModalState(() {
+                                  selectedMood = mood;
+                                });
+                              },
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppColors.primarySoft
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : Colors.grey.shade300,
+                            ),
+                          ),
+                          child: Text(
+                            mood,
+                            style: const TextStyle(fontSize: 22),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: titleCtrl,
+                    enabled: !isSaving,
+                    maxLength: 120,
+                    decoration: InputDecoration(
+                      hintText: 'Title (optional)',
+                      hintStyle: GoogleFonts.poppins(
+                        color: AppColors.textLight,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      contentPadding: const EdgeInsets.all(12),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: contentCtrl,
+                      enabled: !isSaving,
+                      maxLines: null,
+                      expands: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: InputDecoration(
+                        hintText: 'Write your thoughts here...',
+                        hintStyle: GoogleFonts.poppins(
+                          color: AppColors.textLight,
+                          fontSize: 13,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isSaving
+                              ? null
+                              : () {
+                                  Navigator.of(sheetContext).pop();
+                                },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isSaving
+                              ? null
+                              : () async {
+                                  if (contentCtrl.text.trim().isEmpty) {
+                                    _showMessage(
+                                      'Isi note dulu ya.',
+                                      isError: true,
+                                    );
+                                    return;
+                                  }
+
+                                  setModalState(() {
+                                    isSaving = true;
+                                  });
+
+                                  try {
+                                    if (isEditing) {
+                                      await this
+                                          .context
+                                          .read<AppState>()
+                                          .updateJournal(
+                                            journalId: journal!.id,
+                                            title: titleCtrl.text,
+                                            content: contentCtrl.text,
+                                            moodTag: selectedMood,
+                                          );
+                                    } else {
+                                      await this
+                                          .context
+                                          .read<AppState>()
+                                          .createJournal(
+                                            title: titleCtrl.text,
+                                            content: contentCtrl.text,
+                                            moodTag: selectedMood,
+                                          );
+                                    }
+
+                                    if (!sheetContext.mounted) return;
+                                    Navigator.of(sheetContext).pop();
+
+                                    _showMessage(
+                                      isEditing
+                                          ? 'Journal berhasil diperbarui.'
+                                          : 'Journal berhasil disimpan.',
+                                      isError: false,
+                                    );
+                                  } catch (error) {
+                                    if (!mounted) return;
+
+                                    _showMessage(
+                                      _cleanError(error),
+                                      isError: true,
+                                    );
+
+                                    if (sheetContext.mounted) {
+                                      setModalState(() {
+                                        isSaving = false;
+                                      });
+                                    }
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: AppColors.white,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                          ),
+                          child: isSaving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.white,
+                                  ),
+                                )
+                              : Text(
+                                  isEditing
+                                      ? 'Save Changes'
+                                      : 'Save Journal',
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    titleCtrl.dispose();
+    contentCtrl.dispose();
+  }
+
+  void _showJournalDetail(
+    BuildContext context,
+    JournalModel journal,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) {
+        final bool wasEdited = journal.updatedAt
+                .difference(journal.createdAt)
+                .abs()
+                .inSeconds >
+            1;
+
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.78,
+          padding: const EdgeInsets.all(24),
           decoration: const BoxDecoration(
             color: AppColors.white,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(24),
             ),
-          ),
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'New Journal Entry',
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
+            children: <Widget>[
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Write whatever you feel today.',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: AppColors.textMedium,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'How are you feeling?',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: moods.map((m) {
-                  final isSelected = selectedMood == m;
-                  return GestureDetector(
-                    onTap: () => setModalState(() => selectedMood = m),
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primarySoft
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: isSelected
-                              ? AppColors.primary
-                              : Colors.grey.shade300,
-                        ),
-                      ),
+              const SizedBox(height: 20),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySoft,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Center(
                       child: Text(
-                        m,
-                        style: const TextStyle(fontSize: 22),
+                        journal.moodTag ?? '😊',
+                        style: const TextStyle(fontSize: 24),
                       ),
                     ),
-                  );
-                }).toList(),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          journal.title.isEmpty
+                              ? 'Untitled Note'
+                              : journal.title,
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          DateFormat(
+                            'EEEE, d MMMM yyyy - HH:mm',
+                          ).format(journal.createdAt),
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                        if (wasEdited) ...<Widget>[
+                          const SizedBox(height: 3),
+                          Text(
+                            'Edited ${DateFormat('d MMM yyyy - HH:mm').format(journal.updatedAt)}',
+                            style: GoogleFonts.poppins(
+                              fontSize: 10,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primarySoft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Your note record',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primary,
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
-              TextField(
-                controller: titleCtrl,
-                decoration: InputDecoration(
-                  hintText: 'Title (optional)',
-                  hintStyle: GoogleFonts.poppins(color: AppColors.textLight),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Text(
+                    journal.content,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: AppColors.textMedium,
+                      height: 1.8,
+                    ),
                   ),
-                  contentPadding: const EdgeInsets.all(12),
                 ),
               ),
               const SizedBox(height: 12),
-              Expanded(
-                child: TextField(
-                  controller: contentCtrl,
-                  maxLines: null,
-                  expands: true,
-                  decoration: InputDecoration(
-                    hintText: 'Write your thoughts here...',
-                    hintStyle: GoogleFonts.poppins(
-                      color: AppColors.textLight,
-                      fontSize: 13,
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+
+                        Future<void>.delayed(
+                          Duration.zero,
+                          () {
+                            if (mounted) {
+                              _showJournalEditor(journal: journal);
+                            }
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.edit_rounded),
+                      label: const Text('Edit'),
                     ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    contentPadding: const EdgeInsets.all(12),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+
+                        Future<void>.delayed(
+                          Duration.zero,
+                          () {
+                            if (mounted) {
+                              _confirmDeleteJournal(journal);
+                            }
+                          },
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.delete_outline_rounded,
+                        color: AppColors.error,
+                      ),
+                      label: const Text(
+                        'Delete',
+                        style: TextStyle(color: AppColors.error),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    if (contentCtrl.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Isi note dulu ya'),
-                          backgroundColor: AppColors.error,
-                        ),
-                      );
-                      return;
-                    }
-
-                    context.read<AppState>().addJournal(
-                          JournalModel(
-                            id: DateTime.now().millisecondsSinceEpoch,
-                            title: titleCtrl.text.trim(),
-                            content: contentCtrl.text.trim(),
-                            moodTag: selectedMood,
-                            createdAt: DateTime.now(),
-                          ),
-                        );
-
-                    Navigator.pop(ctx);
+                    Navigator.of(sheetContext).pop();
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: AppColors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: BorderRadius.circular(24),
                     ),
                   ),
-                  child: Text(
-                    'Save Journal',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
+                  child: const Text('Close'),
                 ),
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  void _showJournalDetail(BuildContext context, JournalModel journal) {
-    showModalBottomSheet(
+  Future<void> _confirmDeleteJournal(
+    JournalModel journal,
+  ) async {
+    final bool? confirmed = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        height: MediaQuery.of(context).size.height * 0.75,
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(24),
-            topRight: Radius.circular(24),
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppColors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 48,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
+          title: Text(
+            'Delete Journal?',
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w700,
+              color: AppColors.primary,
             ),
-            const SizedBox(height: 20),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: AppColors.primarySoft,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      journal.moodTag ?? '😊',
-                      style: const TextStyle(fontSize: 24),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        journal.title.isEmpty ? 'Untitled Note' : journal.title,
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        DateFormat('EEEE, d MMMM yyyy - HH:mm')
-                            .format(journal.createdAt),
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: AppColors.textLight,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          ),
+          content: Text(
+            'Journal yang dihapus tidak dapat dikembalikan.',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppColors.textMedium,
             ),
-            const SizedBox(height: 18),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.primarySoft,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'Your note record',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
-                ),
-              ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Cancel'),
             ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Text(
-                  journal.content,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: AppColors.textMedium,
-                    height: 1.8,
-                  ),
-                ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: AppColors.white,
               ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(ctx),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: AppColors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: Text(
-                  'Close',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
+              child: const Text('Delete'),
             ),
           ],
-        ),
-      ),
+        );
+      },
     );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await context.read<AppState>().deleteJournal(journal.id);
+
+      if (!mounted) return;
+
+      _showMessage(
+        'Journal berhasil dihapus.',
+        isError: false,
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      _showMessage(
+        _cleanError(error),
+        isError: true,
+      );
+    }
+  }
+
+  void _showMessage(
+    String message, {
+    required bool isError,
+  }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: isError
+              ? AppColors.error
+              : AppColors.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  String _cleanError(Object error) {
+    return error
+        .toString()
+        .replaceFirst('Exception: ', '')
+        .trim();
   }
 }

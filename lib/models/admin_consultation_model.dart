@@ -20,6 +20,9 @@ class AdminConsultationModel {
   final String consultationStatus;
   final String paymentStatus;
   final String attendanceStatus;
+  final DateTime? attendanceConfirmedAt;
+  final DateTime? attendanceMarkedAt;
+  final String? attendanceMarkedBy;
 
   final String? paymentMethodName;
   final String? proofPath;
@@ -46,6 +49,9 @@ class AdminConsultationModel {
     required this.consultationStatus,
     required this.paymentStatus,
     required this.attendanceStatus,
+    required this.attendanceConfirmedAt,
+    required this.attendanceMarkedAt,
+    required this.attendanceMarkedBy,
     required this.paymentMethodName,
     required this.proofPath,
     required this.rejectionReason,
@@ -56,6 +62,21 @@ class AdminConsultationModel {
   bool get isWaitingVerification =>
       paymentStatus == 'pending_verification' &&
       consultationStatus == 'waiting_verification';
+
+  bool get isOffline => consultationType == 'offline';
+
+  String get userConfirmationLabel {
+    if (!isOffline) return 'Tidak Diperlukan';
+    return attendanceConfirmedAt != null ? 'Sudah Konfirmasi H-1' : 'Belum Konfirmasi H-1';
+  }
+
+  String get actualAttendanceLabel {
+    switch (attendanceStatus) {
+      case 'attended': return 'Hadir';
+      case 'absent': return 'Tidak Hadir';
+      default: return 'Belum Dicatat';
+    }
+  }
 
   String get consultationStatusLabel {
     switch (consultationStatus) {

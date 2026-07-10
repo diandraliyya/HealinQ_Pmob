@@ -3,30 +3,35 @@ class BookingModel {
   final String paymentId;
   final String slotId;
   final String counselorId;
-
   final String counselorName;
   final String specialization;
   final String location;
   final String? avatarPath;
-
   final String bookingCode;
   final String consultationType;
   final DateTime scheduledStart;
   final DateTime scheduledEnd;
   final double amount;
   final String? notes;
-
   final String consultationStatus;
   final String paymentStatus;
   final String attendanceStatus;
-
+  final DateTime? attendanceConfirmedAt;
+  final DateTime? attendanceMarkedAt;
+  final String? attendanceMarkedBy;
   final String? paymentMethodId;
   final String? proofPath;
   final String? rejectionReason;
+  final String? cancellationReason;
+  final DateTime consultationCreatedAt;
+  final DateTime? paymentUpdatedAt;
   final DateTime? submittedAt;
   final DateTime? verifiedAt;
-
   final String? chatRoomId;
+  final String? reviewId;
+  final int? reviewRating;
+  final String? reviewText;
+  final DateTime? reviewedAt;
 
   const BookingModel({
     required this.consultationId,
@@ -46,12 +51,22 @@ class BookingModel {
     required this.consultationStatus,
     required this.paymentStatus,
     required this.attendanceStatus,
+    required this.attendanceConfirmedAt,
+    required this.attendanceMarkedAt,
+    required this.attendanceMarkedBy,
     required this.paymentMethodId,
     required this.proofPath,
     required this.rejectionReason,
+    required this.cancellationReason,
+    required this.consultationCreatedAt,
+    required this.paymentUpdatedAt,
     required this.submittedAt,
     required this.verifiedAt,
     required this.chatRoomId,
+    this.reviewId,
+    this.reviewRating,
+    this.reviewText,
+    this.reviewedAt,
   });
 
   factory BookingModel.fromMergedMaps({
@@ -60,6 +75,7 @@ class BookingModel {
     Map<String, dynamic>? counselorProfile,
     Map<String, dynamic>? counselorDetail,
     Map<String, dynamic>? chatRoom,
+    Map<String, dynamic>? review,
   }) {
     return BookingModel(
       consultationId: consultation['id']?.toString() ?? '',
@@ -86,17 +102,36 @@ class BookingModel {
       paymentStatus: payment?['status']?.toString() ?? 'unpaid',
       attendanceStatus:
           consultation['attendance_status']?.toString() ?? 'not_required',
+      attendanceConfirmedAt: _parseNullableDateTime(consultation['attendance_confirmed_at']),
+      attendanceMarkedAt: _parseNullableDateTime(consultation['attendance_marked_at']),
+      attendanceMarkedBy: consultation['attendance_marked_by']?.toString(),
       paymentMethodId: payment?['method_id']?.toString(),
       proofPath: payment?['proof_path']?.toString(),
       rejectionReason: payment?['rejection_reason']?.toString(),
+      cancellationReason: consultation['cancellation_reason']?.toString(),
+      consultationCreatedAt: _parseDateTime(consultation['created_at']),
+      paymentUpdatedAt: _parseNullableDateTime(payment?['updated_at']),
       submittedAt: _parseNullableDateTime(payment?['submitted_at']),
       verifiedAt: _parseNullableDateTime(payment?['verified_at']),
       chatRoomId: chatRoom?['id']?.toString(),
+      reviewId: review?['id']?.toString(),
+      reviewRating: _parseNullableInt(review?['rating']),
+      reviewText: review?['review_text']?.toString(),
+      reviewedAt: _parseNullableDateTime(review?['created_at']),
     );
   }
 
   bool get isOnline => consultationType == 'online';
   bool get isOffline => consultationType == 'offline';
+
+  bool get hasReview =>
+      reviewId != null && reviewId!.isNotEmpty;
+
+  bool get canReviewCounselor =>
+      consultationStatus == 'completed' &&
+      paymentStatus == 'paid' &&
+      !hasReview &&
+      (isOnline || attendanceStatus == 'attended');
 
   bool get isConfirmed =>
       consultationStatus == 'confirmed' ||
@@ -104,80 +139,81 @@ class BookingModel {
       consultationStatus == 'completed';
 
   bool get isWaitingForPayment => consultationStatus == 'pending_payment';
-
   bool get isWaitingForVerification =>
       consultationStatus == 'waiting_verification';
 
+  DateTime get paymentWindowStartedAt =>
+      paymentUpdatedAt ?? consultationCreatedAt;
+
+  DateTime get paymentDeadline {
+    final DateTime regularDeadline =
+        paymentWindowStartedAt.add(const Duration(minutes: 30));
+    return regularDeadline.isBefore(scheduledStart)
+        ? regularDeadline
+        : scheduledStart;
+  }
+
+  bool get isPaymentWindowExpired =>
+      !DateTime.now().isBefore(paymentDeadline);
+
   bool get canRetryPayment =>
       consultationStatus == 'pending_payment' &&
-      (paymentStatus == 'unpaid' || paymentStatus == 'rejected');
+      (paymentStatus == 'unpaid' || paymentStatus == 'rejected') &&
+      !isPaymentWindowExpired;
 
+  bool get canCancelBooking =>
+      consultationStatus == 'pending_payment' &&
+      (paymentStatus == 'unpaid' || paymentStatus == 'rejected') &&
+      !isPaymentWindowExpired;
 
-  bool get isAttendanceConfirmed =>
-      attendanceStatus == 'confirmed';
+  bool get isAttendanceConfirmed => attendanceConfirmedAt != null;
+
+  bool get isActualAttendanceFinal => attendanceStatus == 'attended' || attendanceStatus == 'absent';
+
+  String get userConfirmationLabel {
+    if (!isOffline) return 'Tidak Diperlukan';
+    return attendanceConfirmedAt != null ? 'Sudah Konfirmasi H-1' : 'Belum Konfirmasi H-1';
+  }
+
+  String get actualAttendanceLabel {
+    switch (attendanceStatus) {
+      case 'attended': return 'Hadir';
+      case 'absent': return 'Tidak Hadir';
+      default: return 'Belum Dicatat Counselor';
+    }
+  }
 
   DateTime get attendanceOpenAt {
-    /*
-     * Backend memakai Asia/Jakarta.
-     * Perhitungan ini menghasilkan pukul 00.00 WIB pada H-1
-     * tanpa membutuhkan package timezone tambahan.
-     */
     final DateTime jakartaSchedule =
-        scheduledStart.toUtc().add(
-          const Duration(hours: 7),
-        );
-
+        scheduledStart.toUtc().add(const Duration(hours: 7));
     final DateTime scheduleDateUtc = DateTime.utc(
       jakartaSchedule.year,
       jakartaSchedule.month,
       jakartaSchedule.day,
     );
-
     return scheduleDateUtc
-        .subtract(
-          const Duration(
-            days: 1,
-            hours: 7,
-          ),
-        )
+        .subtract(const Duration(days: 1, hours: 7))
         .toLocal();
   }
 
-  bool get isBeforeAttendanceWindow {
-    return DateTime.now()
-        .toUtc()
-        .isBefore(
-          attendanceOpenAt.toUtc(),
-        );
-  }
+  bool get isBeforeAttendanceWindow =>
+      DateTime.now().toUtc().isBefore(attendanceOpenAt.toUtc());
 
   bool get isAttendanceWindowOpen {
-    final DateTime now =
-        DateTime.now().toUtc();
-
-    return !now.isBefore(
-          attendanceOpenAt.toUtc(),
-        ) &&
-        now.isBefore(
-          scheduledStart.toUtc(),
-        );
+    final DateTime now = DateTime.now().toUtc();
+    return !now.isBefore(attendanceOpenAt.toUtc()) &&
+        now.isBefore(scheduledStart.toUtc());
   }
 
-  bool get isAttendanceWindowClosed {
-    return !DateTime.now()
-        .toUtc()
-        .isBefore(
-          scheduledStart.toUtc(),
-        );
-  }
+  bool get isAttendanceWindowClosed =>
+      !DateTime.now().toUtc().isBefore(scheduledStart.toUtc());
 
-  bool get canConfirmOfflineAttendance {
-    return isOffline &&
-        consultationStatus == 'confirmed' &&
-        paymentStatus == 'paid' &&
-        attendanceStatus == 'not_confirmed' &&
-        isAttendanceWindowOpen;
-  }
+  bool get canConfirmOfflineAttendance =>
+      isOffline &&
+      consultationStatus == 'confirmed' &&
+      paymentStatus == 'paid' &&
+      attendanceStatus == 'not_confirmed' &&
+      isAttendanceWindowOpen;
 
   String get attendanceStatusLabel {
     switch (attendanceStatus) {
@@ -238,13 +274,18 @@ class BookingModel {
     if (value == null) {
       return DateTime.fromMillisecondsSinceEpoch(0);
     }
-
     return DateTime.parse(value.toString()).toLocal();
   }
 
   static DateTime? _parseNullableDateTime(dynamic value) {
     if (value == null) return null;
     return DateTime.tryParse(value.toString())?.toLocal();
+  }
+
+  static int? _parseNullableInt(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   static double _parseDouble(dynamic value) {
