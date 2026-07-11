@@ -118,75 +118,21 @@ class _BookingTicketScreenState extends State<BookingTicketScreen> {
 
   Future<void> _cancelBooking() async {
     final BookingModel? booking = _booking;
-    if (booking == null || _isMutating || !booking.canCancelBooking) return;
 
-    final TextEditingController reasonController = TextEditingController();
+    if (booking == null ||
+        _isMutating ||
+        !booking.canCancelBooking) {
+      return;
+    }
+
     final String? reason = await showDialog<String>(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          backgroundColor: AppColors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          title: Text(
-            'Cancel Booking?',
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w700,
-              color: AppColors.textDark,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Booking yang dibatalkan akan melepaskan slot agar dapat dipilih user lain.',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  height: 1.55,
-                  color: AppColors.textMedium,
-                ),
-              ),
-              const SizedBox(height: 14),
-              TextField(
-                controller: reasonController,
-                maxLines: 3,
-                maxLength: 500,
-                decoration: InputDecoration(
-                  labelText: 'Alasan pembatalan (opsional)',
-                  filled: true,
-                  fillColor: AppColors.surfaceMuted,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Keep Booking'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop(
-                reasonController.text.trim(),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: AppColors.white,
-              ),
-              child: const Text('Cancel Booking'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => const _CancelBookingDialog(),
     );
 
-    reasonController.dispose();
-    if (!mounted || reason == null) return;
+    if (!mounted || reason == null) {
+      return;
+    }
 
     setState(() {
       _isMutating = true;
@@ -194,21 +140,38 @@ class _BookingTicketScreenState extends State<BookingTicketScreen> {
 
     try {
       await _service.cancelBooking(
-        consultationId: booking.consultationId,
+        consultationId:
+            booking.consultationId,
         reason: reason,
       );
-      await _loadBooking(showLoading: false);
-      if (!mounted) return;
+
+      await _loadBooking(
+        showLoading: false,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
       _showMessage(
         'Booking berhasil dibatalkan dan slot tersedia kembali.',
         isError: false,
       );
     } catch (error) {
       if (mounted) {
-        await _loadBooking(showLoading: false);
+        await _loadBooking(
+          showLoading: false,
+        );
       }
-      if (!mounted) return;
-      _showMessage(_cleanError(error), isError: true);
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        _cleanError(error),
+        isError: true,
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -1320,3 +1283,100 @@ class _BookingTicketScreenState extends State<BookingTicketScreen> {
     return error.toString().replaceFirst('Exception: ', '').trim();
   }
 }
+
+class _CancelBookingDialog
+    extends StatefulWidget {
+  const _CancelBookingDialog();
+
+  @override
+  State<_CancelBookingDialog> createState() =>
+      _CancelBookingDialogState();
+}
+
+class _CancelBookingDialogState
+    extends State<_CancelBookingDialog> {
+  final TextEditingController _reasonController =
+      TextEditingController();
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.of(context).pop(
+      _reasonController.text.trim(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(24),
+      ),
+      title: Text(
+        'Cancel Booking?',
+        style: GoogleFonts.poppins(
+          fontWeight: FontWeight.w700,
+          color: AppColors.textDark,
+        ),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Booking yang dibatalkan akan '
+            'melepaskan slot agar dapat dipilih '
+            'user lain.',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              height: 1.55,
+              color: AppColors.textMedium,
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _reasonController,
+            maxLines: 3,
+            maxLength: 500,
+            decoration: InputDecoration(
+              labelText:
+                  'Alasan pembatalan (opsional)',
+              filled: true,
+              fillColor:
+                  AppColors.surfaceMuted,
+              border: OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: const Text('Keep Booking'),
+        ),
+        ElevatedButton(
+          onPressed: _submit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.error,
+            foregroundColor: AppColors.white,
+          ),
+          child: const Text('Cancel Booking'),
+        ),
+      ],
+    );
+  }
+}
+
