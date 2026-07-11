@@ -1,7 +1,8 @@
+import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import '../../utils/app_state.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -54,6 +55,10 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+
+      if (profile['role'] == 'user') {
+        context.read<AppState>().setUserFromProfile(profile);
+      }
 
       if (!mounted) return;
 
@@ -237,8 +242,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String _translateDatabaseError(String message) {
     final String lowerMessage = message.toLowerCase();
 
-    if (lowerMessage.contains('multiple') &&
-        lowerMessage.contains('rows')) {
+    if (lowerMessage.contains('multiple') && lowerMessage.contains('rows')) {
       return 'Data profil akun terduplikasi. Silakan hubungi admin.';
     }
 
@@ -397,8 +401,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               AppTextField(
                                 hint: 'Email',
                                 controller: _emailController,
-                                keyboardType:
-                                    TextInputType.emailAddress,
+                                keyboardType: TextInputType.emailAddress,
                                 validator: _validateEmail,
                               ),
                               const SizedBox(height: 16),
@@ -412,34 +415,26 @@ class _LoginScreenState extends State<LoginScreen> {
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton(
-                                  onPressed:
-                                      _isLoading ? null : _login,
+                                  onPressed: _isLoading ? null : _login,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor:
-                                        AppColors.brandTeal,
-                                    foregroundColor:
-                                        AppColors.white,
+                                    backgroundColor: AppColors.brandTeal,
+                                    foregroundColor: AppColors.white,
                                     disabledBackgroundColor:
-                                        AppColors.brandTeal
-                                            .withOpacity(0.55),
-                                    disabledForegroundColor:
-                                        AppColors.white,
+                                        AppColors.brandTeal.withOpacity(0.55),
+                                    disabledForegroundColor: AppColors.white,
                                     elevation: 0,
-                                    padding:
-                                        const EdgeInsets.symmetric(
+                                    padding: const EdgeInsets.symmetric(
                                       vertical: 16,
                                     ),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius:
-                                          BorderRadius.circular(30),
+                                      borderRadius: BorderRadius.circular(30),
                                     ),
                                   ),
                                   child: _isLoading
                                       ? const SizedBox(
                                           width: 21,
                                           height: 21,
-                                          child:
-                                              CircularProgressIndicator(
+                                          child: CircularProgressIndicator(
                                             strokeWidth: 2.3,
                                             color: AppColors.white,
                                           ),
@@ -448,8 +443,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                           'Login',
                                           style: GoogleFonts.poppins(
                                             fontSize: 16,
-                                            fontWeight:
-                                                FontWeight.w700,
+                                            fontWeight: FontWeight.w700,
                                           ),
                                         ),
                                 ),
@@ -461,8 +455,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   child: RichText(
                                     textAlign: TextAlign.center,
                                     text: TextSpan(
-                                      text:
-                                          'Don\'t have an account? ',
+                                      text: 'Don\'t have an account? ',
                                       style: GoogleFonts.poppins(
                                         color: AppColors.textMedium,
                                         fontSize: 14,
@@ -471,13 +464,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                         TextSpan(
                                           text: 'Sign Up',
                                           style: GoogleFonts.poppins(
-                                            color:
-                                                AppColors.brandTeal,
-                                            fontWeight:
-                                                FontWeight.w700,
+                                            color: AppColors.brandTeal,
+                                            fontWeight: FontWeight.w700,
                                             decoration:
-                                                TextDecoration
-                                                    .underline,
+                                                TextDecoration.underline,
                                           ),
                                         ),
                                       ],

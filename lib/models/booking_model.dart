@@ -102,8 +102,10 @@ class BookingModel {
       paymentStatus: payment?['status']?.toString() ?? 'unpaid',
       attendanceStatus:
           consultation['attendance_status']?.toString() ?? 'not_required',
-      attendanceConfirmedAt: _parseNullableDateTime(consultation['attendance_confirmed_at']),
-      attendanceMarkedAt: _parseNullableDateTime(consultation['attendance_marked_at']),
+      attendanceConfirmedAt:
+          _parseNullableDateTime(consultation['attendance_confirmed_at']),
+      attendanceMarkedAt:
+          _parseNullableDateTime(consultation['attendance_marked_at']),
       attendanceMarkedBy: consultation['attendance_marked_by']?.toString(),
       paymentMethodId: payment?['method_id']?.toString(),
       proofPath: payment?['proof_path']?.toString(),
@@ -124,8 +126,7 @@ class BookingModel {
   bool get isOnline => consultationType == 'online';
   bool get isOffline => consultationType == 'offline';
 
-  bool get hasReview =>
-      reviewId != null && reviewId!.isNotEmpty;
+  bool get hasReview => reviewId != null && reviewId!.isNotEmpty;
 
   bool get canReviewCounselor =>
       consultationStatus == 'completed' &&
@@ -153,8 +154,7 @@ class BookingModel {
         : scheduledStart;
   }
 
-  bool get isPaymentWindowExpired =>
-      !DateTime.now().isBefore(paymentDeadline);
+  bool get isPaymentWindowExpired => !DateTime.now().isBefore(paymentDeadline);
 
   bool get canRetryPayment =>
       consultationStatus == 'pending_payment' &&
@@ -168,18 +168,24 @@ class BookingModel {
 
   bool get isAttendanceConfirmed => attendanceConfirmedAt != null;
 
-  bool get isActualAttendanceFinal => attendanceStatus == 'attended' || attendanceStatus == 'absent';
+  bool get isActualAttendanceFinal =>
+      attendanceStatus == 'attended' || attendanceStatus == 'absent';
 
   String get userConfirmationLabel {
     if (!isOffline) return 'Tidak Diperlukan';
-    return attendanceConfirmedAt != null ? 'Sudah Konfirmasi H-1' : 'Belum Konfirmasi H-1';
+    return attendanceConfirmedAt != null
+        ? 'Sudah Konfirmasi H-1'
+        : 'Belum Konfirmasi H-1';
   }
 
   String get actualAttendanceLabel {
     switch (attendanceStatus) {
-      case 'attended': return 'Hadir';
-      case 'absent': return 'Tidak Hadir';
-      default: return 'Belum Dicatat Counselor';
+      case 'attended':
+        return 'Hadir';
+      case 'absent':
+        return 'Tidak Hadir';
+      default:
+        return 'Belum Dicatat Counselor';
     }
   }
 

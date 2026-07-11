@@ -1,3 +1,7 @@
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../services/profile_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -31,7 +35,10 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
 
-      context.read<AppState>().loadJournals().catchError((_) {});
+      final appState = context.read<AppState>();
+
+      appState.loadJournals().catchError((_) {});
+      appState.loadHomeData().catchError((_) {});
     });
   }
 
@@ -117,7 +124,7 @@ class _HomeContent extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Hello, Buddy!',
+                          'Hello, ${user?.name ?? 'Buddy'}!',
                           style: GoogleFonts.poppins(
                             fontSize: 28,
                             fontWeight: FontWeight.w800,
@@ -212,7 +219,7 @@ class _HomeContent extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        ...AppData.counselors.take(3).map(
+                        ...state.homeCounselors.take(3).map(
                               (c) => CounselorCard(
                                 name: c.name,
                                 specialization: c.specialization,
@@ -321,9 +328,7 @@ class _HomeContent extends StatelessWidget {
           .map(
             (JournalModel journal) => _buildJournalItem(
               journal.moodTag ?? '😐',
-              journal.title.isEmpty
-                  ? 'Untitled Note'
-                  : journal.title,
+              journal.title.isEmpty ? 'Untitled Note' : journal.title,
               journal.createdAt,
             ),
           )
@@ -482,26 +487,54 @@ class _HomeContent extends StatelessWidget {
   }
 
   Widget _buildConsultationHistory(BuildContext context) {
+    final state = context.watch<AppState>();
+    final bookings = [...state.homeBookings]..sort(
+        (a, b) => b.scheduledStart.compareTo(a.scheduledStart),
+      );
+
+    if (bookings.isEmpty) {
+      return SizedBox(
+        height: 68,
+        child: Center(
+          child: Text(
+            'Belum ada konsultasi',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppColors.textMedium,
+            ),
+          ),
+        ),
+      );
+    }
+
     return SizedBox(
       height: 68,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: AppData.consultationHistories.length,
+        itemCount: bookings.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          final item = AppData.consultationHistories[index];
-          final day = DateFormat('d').format(item.scheduledAt);
-          final month = DateFormat('MMM').format(item.scheduledAt);
+          final item = bookings[index];
+
+          final day = DateFormat('d').format(item.scheduledStart);
+          final month = DateFormat('MMM').format(item.scheduledStart);
 
           return GestureDetector(
-            onTap: () => _showConsultationHistorySheet(context, item),
+            onTap: () {
+              // nanti bisa diarahkan ke detail booking
+            },
             child: Container(
               width: 72,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 8,
+              ),
               decoration: BoxDecoration(
                 color: AppColors.pinkCard,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.primaryLight),
+                border: Border.all(
+                  color: AppColors.primaryLight,
+                ),
               ),
               child: Center(
                 child: Text(
@@ -814,21 +847,17 @@ class _HomeContent extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _DailyLyricCard extends StatefulWidget {
   const _DailyLyricCard();
 
   @override
-  State<_DailyLyricCard> createState() =>
-      _DailyLyricCardState();
+  State<_DailyLyricCard> createState() => _DailyLyricCardState();
 }
 
-class _DailyLyricCardState
-    extends State<_DailyLyricCard> {
-  final ContentService _service =
-      ContentService();
+class _DailyLyricCardState extends State<_DailyLyricCard> {
+  final ContentService _service = ContentService();
 
   LyricContentModel? _lyric;
   String? _errorMessage;
@@ -842,8 +871,7 @@ class _DailyLyricCardState
 
   Future<void> _loadLyric() async {
     try {
-      final LyricContentModel? result =
-          await _service.getLyricOfTheDay();
+      final LyricContentModel? result = await _service.getLyricOfTheDay();
 
       if (!mounted) return;
 
@@ -926,8 +954,7 @@ class _DailyLyricCardState
                       ),
                     )
                   : Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Row(
                           children: <Widget>[
@@ -1014,10 +1041,74 @@ class _DashedLinePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _ProfileTab extends StatelessWidget {
+class _ProfileTab extends StatefulWidget {
   const _ProfileTab();
 
+  @override
+  State<_ProfileTab> createState() => _ProfileTabState();
+}
+
+class _ProfileTabState extends State<_ProfileTab> {
   static const Color _baseColor = AppColors.bgGradientStart;
+
+  Future<void> _pickProfileImage(BuildContext context) async {
+    final ImagePicker picker = ImagePicker();
+
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+
+    if (image == null) {
+      return;
+    }
+
+    try {
+      final ProfileService service = ProfileService();
+
+      await service.uploadAvatar(
+        file: File(image.path),
+      );
+
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+
+      if (userId == null) {
+        return;
+      }
+
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .single();
+
+      if (!mounted) {
+        return;
+      }
+
+      context.read<AppState>().setUserFromProfile(profile);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Foto profile berhasil diperbarui',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Gagal upload foto: $error',
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1047,14 +1138,54 @@ class _ProfileTab extends StatelessWidget {
                               width: 2,
                             ),
                           ),
-                          child: const CircleAvatar(
-                            radius: 48,
-                            backgroundColor: AppColors.primaryLight,
-                            child: Icon(
-                              Icons.person,
-                              size: 58,
-                              color: AppColors.primary,
-                            ),
+                          child: Stack(
+                            children: [
+                              CircleAvatar(
+                                radius: 48,
+                                backgroundColor: AppColors.primaryLight,
+                                backgroundImage: user?.avatarPath != null &&
+                                        user!.avatarPath!.isNotEmpty
+                                    ? NetworkImage(
+                                        ProfileService().getAvatarUrl(
+                                          user.avatarPath,
+                                        ),
+                                      )
+                                    : null,
+                                child: user?.avatarPath == null ||
+                                        user!.avatarPath!.isEmpty
+                                    ? const Icon(
+                                        Icons.person,
+                                        size: 58,
+                                        color: AppColors.primary,
+                                      )
+                                    : null,
+                              ),
+                              Positioned(
+                                right: 0,
+                                bottom: 0,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    _pickProfileImage(context);
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(7),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: AppColors.white,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.camera_alt_rounded,
+                                      size: 16,
+                                      color: AppColors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 14),

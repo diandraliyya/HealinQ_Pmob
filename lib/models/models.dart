@@ -18,19 +18,33 @@ class AuthSession {
   });
 }
 
+// ================= USER MODEL =================
+
 class UserModel {
   final int id;
+
+  // UUID dari Supabase auth.users / profiles
+  final String? userUuid;
+
   final String username;
   final String name;
   final String email;
   final String password;
+
   final String? birthDate;
   final String? lastEdu;
   final String? gender;
   final String? address;
 
+  // Supabase profile fields
+  final String? phone;
+  final String? avatarPath;
+  final String? bio;
+  final String? createdAt;
+
   UserModel({
     required this.id,
+    this.userUuid,
     required this.username,
     required this.name,
     required this.email,
@@ -39,10 +53,35 @@ class UserModel {
     this.lastEdu,
     this.gender,
     this.address,
+    this.phone,
+    this.avatarPath,
+    this.bio,
+    this.createdAt,
   });
+
+  factory UserModel.fromProfile(
+    Map<String, dynamic> map,
+  ) {
+    return UserModel(
+      id: DateTime.now().millisecondsSinceEpoch,
+      userUuid: map['id']?.toString(),
+      username: map['username']?.toString() ?? '',
+      name: map['full_name']?.toString() ?? '',
+      email: map['email']?.toString() ?? '',
+      password: '',
+      birthDate: map['birth_date']?.toString(),
+      gender: map['gender']?.toString(),
+      address: map['address']?.toString(),
+      phone: map['phone']?.toString(),
+      avatarPath: map['avatar_path']?.toString(),
+      bio: map['bio']?.toString(),
+      createdAt: map['created_at']?.toString(),
+    );
+  }
 
   UserModel copyWith({
     int? id,
+    String? userUuid,
     String? username,
     String? name,
     String? email,
@@ -51,9 +90,14 @@ class UserModel {
     String? lastEdu,
     String? gender,
     String? address,
+    String? phone,
+    String? avatarPath,
+    String? bio,
+    String? createdAt,
   }) {
     return UserModel(
       id: id ?? this.id,
+      userUuid: userUuid ?? this.userUuid,
       username: username ?? this.username,
       name: name ?? this.name,
       email: email ?? this.email,
@@ -62,11 +106,16 @@ class UserModel {
       lastEdu: lastEdu ?? this.lastEdu,
       gender: gender ?? this.gender,
       address: address ?? this.address,
+      phone: phone ?? this.phone,
+      avatarPath: avatarPath ?? this.avatarPath,
+      bio: bio ?? this.bio,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'id': id,
+        'userUuid': userUuid,
         'username': username,
         'name': name,
         'email': email,
@@ -75,8 +124,14 @@ class UserModel {
         'lastEdu': lastEdu,
         'gender': gender,
         'address': address,
+        'phone': phone,
+        'avatarPath': avatarPath,
+        'bio': bio,
+        'createdAt': createdAt,
       };
 }
+
+// ================= ADMIN MODEL =================
 
 class AdminModel {
   final int id;
@@ -101,6 +156,8 @@ class AdminModel {
         'password': password,
       };
 }
+
+// ================= COUNSELOR MODEL =================
 
 class CounselorModel {
   final int id;
@@ -172,25 +229,9 @@ class CounselorModel {
       isAvailable: isAvailable ?? this.isAvailable,
     );
   }
-
-  Map<String, dynamic> toMap() => <String, dynamic>{
-        'id': id,
-        'username': username,
-        'name': name,
-        'email': email,
-        'password': password,
-        'specialization': specialization,
-        'rating': rating,
-        'type': type,
-        'location': location,
-        'bio': bio,
-        'yearsExperience': yearsExperience,
-        'priceOnline': priceOnline,
-        'priceOffline': priceOffline,
-        'isVerified': isVerified,
-        'isAvailable': isAvailable,
-      };
 }
+
+// ================= JOURNAL MODEL =================
 
 class JournalModel {
   final String id;
@@ -215,56 +256,27 @@ class JournalModel {
   factory JournalModel.fromMap(
     Map<String, dynamic> map,
   ) {
-    final DateTime createdAt = DateTime.tryParse(
+    final DateTime created = DateTime.tryParse(
           map['created_at']?.toString() ?? '',
         )?.toLocal() ??
         DateTime.now();
 
-    final DateTime updatedAt = DateTime.tryParse(
-          map['updated_at']?.toString() ?? '',
-        )?.toLocal() ??
-        createdAt;
-
     return JournalModel(
       id: map['id']?.toString() ?? '',
       userId: map['user_id']?.toString() ?? '',
-      title: map['title']?.toString().trim() ?? '',
+      title: map['title']?.toString() ?? '',
       content: map['content']?.toString() ?? '',
-      moodTag: _nullableJournalString(
-        map['mood_tag'],
-      ),
-      createdAt: createdAt,
-      updatedAt: updatedAt,
+      moodTag: map['mood_tag']?.toString(),
+      createdAt: created,
+      updatedAt: DateTime.tryParse(
+            map['updated_at']?.toString() ?? '',
+          ) ??
+          created,
     );
-  }
-
-  JournalModel copyWith({
-    String? id,
-    String? userId,
-    String? title,
-    String? content,
-    String? moodTag,
-    DateTime? createdAt,
-    DateTime? updatedAt,
-  }) {
-    return JournalModel(
-      id: id ?? this.id,
-      userId: userId ?? this.userId,
-      title: title ?? this.title,
-      content: content ?? this.content,
-      moodTag: moodTag ?? this.moodTag,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
-
-  static String? _nullableJournalString(
-    dynamic value,
-  ) {
-    final String text = value?.toString().trim() ?? '';
-    return text.isEmpty ? null : text;
   }
 }
+
+// ================= CONSULTATION =================
 
 class ConsultationModel {
   final int id;
@@ -306,6 +318,8 @@ class ConsultationModel {
   }
 }
 
+// ================= MESSAGE =================
+
 class MessageModel {
   final int id;
   final String content;
@@ -319,6 +333,8 @@ class MessageModel {
     required this.createdAt,
   });
 }
+
+// ================= PASSION =================
 
 class PassionQuestion {
   final int id;
