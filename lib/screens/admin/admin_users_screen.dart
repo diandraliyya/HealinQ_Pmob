@@ -695,150 +695,17 @@ class _AdminUsersScreenState
   Future<void> _showLyricDialog({
     LyricContentModel? lyric,
   }) async {
-    final TextEditingController
-        titleController =
-        TextEditingController(
-      text: lyric?.title ?? '',
-    );
-
-    final TextEditingController
-        artistController =
-        TextEditingController(
-      text: lyric?.artist ?? '',
-    );
-
-    final TextEditingController
-        excerptController =
-        TextEditingController(
-      text: lyric?.lyricExcerpt ?? '',
-    );
-
-    bool isActive =
-        lyric?.isActive ?? true;
-
-    final bool? save =
-        await showDialog<bool>(
+    final _LyricDialogResult? result =
+        await showDialog<_LyricDialogResult>(
       context: context,
-      builder: (
-        BuildContext dialogContext,
-      ) {
-        return StatefulBuilder(
-          builder: (
-            BuildContext context,
-            void Function(
-              void Function(),
-            ) setDialogState,
-          ) {
-            return AlertDialog(
-              backgroundColor:
-                  AppColors.white,
-              shape:
-                  RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(
-                  24,
-                ),
-              ),
-              title: Text(
-                lyric == null
-                    ? 'Add Lyric'
-                    : 'Edit Lyric',
-                style: GoogleFonts.poppins(
-                  fontWeight:
-                      FontWeight.w700,
-                  color:
-                      AppColors.primary,
-                ),
-              ),
-              content:
-                  SingleChildScrollView(
-                child: Column(
-                  mainAxisSize:
-                      MainAxisSize.min,
-                  children: <Widget>[
-                    _DialogField(
-                      controller:
-                          titleController,
-                      label: 'Song title',
-                    ),
-                    const SizedBox(height: 10),
-                    _DialogField(
-                      controller:
-                          artistController,
-                      label: 'Artist',
-                    ),
-                    const SizedBox(height: 10),
-                    _DialogField(
-                      controller:
-                          excerptController,
-                      label:
-                          'Short lyric excerpt',
-                      maxLines: 4,
-                      maxLength: 1000,
-                    ),
-                    SwitchListTile(
-                      value: isActive,
-                      contentPadding:
-                          EdgeInsets.zero,
-                      title: const Text(
-                        'Active on user pages',
-                      ),
-                      onChanged: (
-                        bool value,
-                      ) {
-                        setDialogState(() {
-                          isActive = value;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(
-                      dialogContext,
-                    ).pop(false);
-                  },
-                  child:
-                      const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (titleController
-                            .text
-                            .trim()
-                            .isEmpty ||
-                        artistController
-                            .text
-                            .trim()
-                            .isEmpty ||
-                        excerptController
-                            .text
-                            .trim()
-                            .isEmpty) {
-                      return;
-                    }
-
-                    Navigator.of(
-                      dialogContext,
-                    ).pop(true);
-                  },
-                  child:
-                      const Text('Save'),
-                ),
-              ],
-            );
-          },
+      builder: (BuildContext dialogContext) {
+        return _LyricEditorDialog(
+          lyric: lyric,
         );
       },
     );
 
-    if (!mounted || save != true) {
-      titleController.dispose();
-      artistController.dispose();
-      excerptController.dispose();
+    if (!mounted || result == null) {
       return;
     }
 
@@ -850,13 +717,11 @@ class _AdminUsersScreenState
     try {
       await _contentService.saveLyric(
         id: lyric?.id,
-        title:
-            titleController.text,
-        artist:
-            artistController.text,
+        title: result.title,
+        artist: result.artist,
         lyricExcerpt:
-            excerptController.text,
-        isActive: isActive,
+            result.lyricExcerpt,
+        isActive: result.isActive,
       );
 
       await _loadAll(
@@ -877,10 +742,6 @@ class _AdminUsersScreenState
         );
       }
     } finally {
-      titleController.dispose();
-      artistController.dispose();
-      excerptController.dispose();
-
       if (mounted) {
         setState(() {
           _processingId = null;
@@ -892,176 +753,17 @@ class _AdminUsersScreenState
   Future<void> _showJarDialog({
     JarItemContentModel? item,
   }) async {
-    final TextEditingController controller =
-        TextEditingController(
-      text: item?.content ?? '',
-    );
-
-    String itemType =
-        item?.itemType ?? 'affirmation';
-
-    bool isActive =
-        item?.isActive ?? true;
-
-    final bool? save =
-        await showDialog<bool>(
+    final _JarDialogResult? result =
+        await showDialog<_JarDialogResult>(
       context: context,
-      builder: (
-        BuildContext dialogContext,
-      ) {
-        return StatefulBuilder(
-          builder: (
-            BuildContext context,
-            void Function(
-              void Function(),
-            ) setDialogState,
-          ) {
-            return AlertDialog(
-              backgroundColor:
-                  AppColors.white,
-              shape:
-                  RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(
-                  24,
-                ),
-              ),
-              title: Text(
-                item == null
-                    ? 'Add Jar Item'
-                    : 'Edit Jar Item',
-                style: GoogleFonts.poppins(
-                  fontWeight:
-                      FontWeight.w700,
-                  color:
-                      AppColors.primary,
-                ),
-              ),
-              content:
-                  SingleChildScrollView(
-                child: Column(
-                  mainAxisSize:
-                      MainAxisSize.min,
-                  children: <Widget>[
-                    DropdownButtonFormField<
-                        String>(
-                      value: itemType,
-                      items: const <
-                          DropdownMenuItem<
-                              String>>[
-                        DropdownMenuItem<
-                            String>(
-                          value:
-                              'affirmation',
-                          child: Text(
-                            'Affirmation',
-                          ),
-                        ),
-                        DropdownMenuItem<
-                            String>(
-                          value: 'question',
-                          child:
-                              Text('Question'),
-                        ),
-                        DropdownMenuItem<
-                            String>(
-                          value:
-                              'challenge',
-                          child: Text(
-                            'Challenge',
-                          ),
-                        ),
-                      ],
-                      onChanged: (
-                        String? value,
-                      ) {
-                        if (value == null) {
-                          return;
-                        }
-
-                        setDialogState(() {
-                          itemType = value;
-                        });
-                      },
-                      decoration:
-                          InputDecoration(
-                        labelText: 'Type',
-                        filled: true,
-                        fillColor:
-                            AppColors
-                                .primarySoft,
-                        border:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            18,
-                          ),
-                          borderSide:
-                              BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    _DialogField(
-                      controller:
-                          controller,
-                      label: 'Content',
-                      maxLines: 5,
-                      maxLength: 1000,
-                    ),
-                    SwitchListTile(
-                      value: isActive,
-                      contentPadding:
-                          EdgeInsets.zero,
-                      title: const Text(
-                        'Active in Jar of Happiness',
-                      ),
-                      onChanged: (
-                        bool value,
-                      ) {
-                        setDialogState(() {
-                          isActive = value;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(
-                      dialogContext,
-                    ).pop(false);
-                  },
-                  child:
-                      const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (controller.text
-                        .trim()
-                        .isEmpty) {
-                      return;
-                    }
-
-                    Navigator.of(
-                      dialogContext,
-                    ).pop(true);
-                  },
-                  child:
-                      const Text('Save'),
-                ),
-              ],
-            );
-          },
+      builder: (BuildContext dialogContext) {
+        return _JarItemEditorDialog(
+          item: item,
         );
       },
     );
 
-    if (!mounted || save != true) {
-      controller.dispose();
+    if (!mounted || result == null) {
       return;
     }
 
@@ -1073,9 +775,9 @@ class _AdminUsersScreenState
     try {
       await _contentService.saveJarItem(
         id: item?.id,
-        itemType: itemType,
-        content: controller.text,
-        isActive: isActive,
+        itemType: result.itemType,
+        content: result.content,
+        isActive: result.isActive,
       );
 
       await _loadAll(
@@ -1096,8 +798,6 @@ class _AdminUsersScreenState
         );
       }
     } finally {
-      controller.dispose();
-
       if (mounted) {
         setState(() {
           _processingId = null;
@@ -1117,187 +817,20 @@ class _AdminUsersScreenState
       return;
     }
 
-    final TextEditingController
-        questionController =
-        TextEditingController(
-      text: question?.questionText ?? '',
-    );
-
-    final TextEditingController
-        orderController =
-        TextEditingController(
-      text: '${question?.sortOrder ?? (_questions.length + 1)}',
-    );
-
-    String categoryCode =
-        question?.categoryCode ??
-            _categories.first.code;
-
-    bool isActive =
-        question?.isActive ?? true;
-
-    final bool? save =
-        await showDialog<bool>(
+    final _QuestionDialogResult? result =
+        await showDialog<_QuestionDialogResult>(
       context: context,
-      builder: (
-        BuildContext dialogContext,
-      ) {
-        return StatefulBuilder(
-          builder: (
-            BuildContext context,
-            void Function(
-              void Function(),
-            ) setDialogState,
-          ) {
-            return AlertDialog(
-              backgroundColor:
-                  AppColors.white,
-              shape:
-                  RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(
-                  24,
-                ),
-              ),
-              title: Text(
-                question == null
-                    ? 'Add FYP Question'
-                    : 'Edit FYP Question',
-                style: GoogleFonts.poppins(
-                  fontWeight:
-                      FontWeight.w700,
-                  color:
-                      AppColors.primary,
-                ),
-              ),
-              content:
-                  SingleChildScrollView(
-                child: Column(
-                  mainAxisSize:
-                      MainAxisSize.min,
-                  children: <Widget>[
-                    DropdownButtonFormField<
-                        String>(
-                      value: categoryCode,
-                      items: _categories
-                          .map(
-                            (
-                              PassionCategoryContentModel
-                                  category,
-                            ) =>
-                                DropdownMenuItem<
-                                    String>(
-                              value:
-                                  category.code,
-                              child: Text(
-                                '${category.emoji} ${category.name}',
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (
-                        String? value,
-                      ) {
-                        if (value == null) {
-                          return;
-                        }
-
-                        setDialogState(() {
-                          categoryCode =
-                              value;
-                        });
-                      },
-                      decoration:
-                          InputDecoration(
-                        labelText:
-                            'Passion category',
-                        filled: true,
-                        fillColor:
-                            AppColors
-                                .primarySoft,
-                        border:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            18,
-                          ),
-                          borderSide:
-                              BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    _DialogField(
-                      controller:
-                          questionController,
-                      label: 'Question',
-                      maxLines: 4,
-                      maxLength: 500,
-                    ),
-                    const SizedBox(height: 10),
-                    _DialogField(
-                      controller:
-                          orderController,
-                      label: 'Sort order',
-                      keyboardType:
-                          TextInputType
-                              .number,
-                    ),
-                    SwitchListTile(
-                      value: isActive,
-                      contentPadding:
-                          EdgeInsets.zero,
-                      title: const Text(
-                        'Active in FYP test',
-                      ),
-                      onChanged: (
-                        bool value,
-                      ) {
-                        setDialogState(() {
-                          isActive = value;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(
-                      dialogContext,
-                    ).pop(false);
-                  },
-                  child:
-                      const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (questionController
-                        .text
-                        .trim()
-                        .isEmpty) {
-                      return;
-                    }
-
-                    Navigator.of(
-                      dialogContext,
-                    ).pop(true);
-                  },
-                  child:
-                      const Text('Save'),
-                ),
-              ],
-            );
-          },
+      builder: (BuildContext dialogContext) {
+        return _PassionQuestionEditorDialog(
+          question: question,
+          categories: _categories,
+          defaultSortOrder:
+              _questions.length + 1,
         );
       },
     );
 
-    if (!mounted || save != true) {
-      questionController.dispose();
-      orderController.dispose();
+    if (!mounted || result == null) {
       return;
     }
 
@@ -1310,14 +843,12 @@ class _AdminUsersScreenState
       await _contentService
           .savePassionQuestion(
         id: question?.id,
-        categoryCode: categoryCode,
+        categoryCode:
+            result.categoryCode,
         questionText:
-            questionController.text,
-        sortOrder: int.tryParse(
-              orderController.text.trim(),
-            ) ??
-            0,
-        isActive: isActive,
+            result.questionText,
+        sortOrder: result.sortOrder,
+        isActive: result.isActive,
       );
 
       await _loadAll(
@@ -1338,9 +869,6 @@ class _AdminUsersScreenState
         );
       }
     } finally {
-      questionController.dispose();
-      orderController.dispose();
-
       if (mounted) {
         setState(() {
           _processingId = null;
@@ -2366,6 +1894,562 @@ class _AdminUsersScreenState
               },
             ),
           ),
+      ],
+    );
+  }
+}
+
+
+class _LyricDialogResult {
+  final String title;
+  final String artist;
+  final String lyricExcerpt;
+  final bool isActive;
+
+  const _LyricDialogResult({
+    required this.title,
+    required this.artist,
+    required this.lyricExcerpt,
+    required this.isActive,
+  });
+}
+
+class _LyricEditorDialog
+    extends StatefulWidget {
+  final LyricContentModel? lyric;
+
+  const _LyricEditorDialog({
+    this.lyric,
+  });
+
+  @override
+  State<_LyricEditorDialog> createState() =>
+      _LyricEditorDialogState();
+}
+
+class _LyricEditorDialogState
+    extends State<_LyricEditorDialog> {
+  late final TextEditingController
+      _titleController;
+  late final TextEditingController
+      _artistController;
+  late final TextEditingController
+      _excerptController;
+
+  late bool _isActive;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _titleController =
+        TextEditingController(
+      text: widget.lyric?.title ?? '',
+    );
+
+    _artistController =
+        TextEditingController(
+      text: widget.lyric?.artist ?? '',
+    );
+
+    _excerptController =
+        TextEditingController(
+      text:
+          widget.lyric?.lyricExcerpt ?? '',
+    );
+
+    _isActive =
+        widget.lyric?.isActive ?? true;
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _artistController.dispose();
+    _excerptController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final String title =
+        _titleController.text.trim();
+    final String artist =
+        _artistController.text.trim();
+    final String excerpt =
+        _excerptController.text.trim();
+
+    if (title.isEmpty ||
+        artist.isEmpty ||
+        excerpt.isEmpty) {
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _LyricDialogResult(
+        title: title,
+        artist: artist,
+        lyricExcerpt: excerpt,
+        isActive: _isActive,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(24),
+      ),
+      title: Text(
+        widget.lyric == null
+            ? 'Add Lyric'
+            : 'Edit Lyric',
+        style: GoogleFonts.poppins(
+          fontWeight: FontWeight.w700,
+          color: AppColors.primary,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _DialogField(
+              controller: _titleController,
+              label: 'Song title',
+            ),
+            const SizedBox(height: 10),
+            _DialogField(
+              controller: _artistController,
+              label: 'Artist',
+            ),
+            const SizedBox(height: 10),
+            _DialogField(
+              controller:
+                  _excerptController,
+              label: 'Short lyric excerpt',
+              maxLines: 4,
+              maxLength: 1000,
+            ),
+            SwitchListTile(
+              value: _isActive,
+              contentPadding:
+                  EdgeInsets.zero,
+              title: const Text(
+                'Active on user pages',
+              ),
+              onChanged: (bool value) {
+                setState(() {
+                  _isActive = value;
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _JarDialogResult {
+  final String itemType;
+  final String content;
+  final bool isActive;
+
+  const _JarDialogResult({
+    required this.itemType,
+    required this.content,
+    required this.isActive,
+  });
+}
+
+class _JarItemEditorDialog
+    extends StatefulWidget {
+  final JarItemContentModel? item;
+
+  const _JarItemEditorDialog({
+    this.item,
+  });
+
+  @override
+  State<_JarItemEditorDialog> createState() =>
+      _JarItemEditorDialogState();
+}
+
+class _JarItemEditorDialogState
+    extends State<_JarItemEditorDialog> {
+  late final TextEditingController
+      _contentController;
+
+  late String _itemType;
+  late bool _isActive;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _contentController =
+        TextEditingController(
+      text: widget.item?.content ?? '',
+    );
+
+    _itemType =
+        widget.item?.itemType ??
+            'affirmation';
+
+    _isActive =
+        widget.item?.isActive ?? true;
+  }
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final String content =
+        _contentController.text.trim();
+
+    if (content.isEmpty) {
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _JarDialogResult(
+        itemType: _itemType,
+        content: content,
+        isActive: _isActive,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(24),
+      ),
+      title: Text(
+        widget.item == null
+            ? 'Add Jar Item'
+            : 'Edit Jar Item',
+        style: GoogleFonts.poppins(
+          fontWeight: FontWeight.w700,
+          color: AppColors.primary,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DropdownButtonFormField<String>(
+              value: _itemType,
+              items: const <
+                  DropdownMenuItem<String>>[
+                DropdownMenuItem<String>(
+                  value: 'affirmation',
+                  child:
+                      Text('Affirmation'),
+                ),
+                DropdownMenuItem<String>(
+                  value: 'question',
+                  child: Text('Question'),
+                ),
+                DropdownMenuItem<String>(
+                  value: 'challenge',
+                  child: Text('Challenge'),
+                ),
+              ],
+              onChanged: (String? value) {
+                if (value == null) {
+                  return;
+                }
+
+                setState(() {
+                  _itemType = value;
+                });
+              },
+              decoration: InputDecoration(
+                labelText: 'Type',
+                filled: true,
+                fillColor:
+                    AppColors.primarySoft,
+                border: OutlineInputBorder(
+                  borderRadius:
+                      BorderRadius.circular(
+                    18,
+                  ),
+                  borderSide:
+                      BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            _DialogField(
+              controller:
+                  _contentController,
+              label: 'Content',
+              maxLines: 5,
+              maxLength: 1000,
+            ),
+            SwitchListTile(
+              value: _isActive,
+              contentPadding:
+                  EdgeInsets.zero,
+              title: const Text(
+                'Active in Jar of Happiness',
+              ),
+              onChanged: (bool value) {
+                setState(() {
+                  _isActive = value;
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuestionDialogResult {
+  final String categoryCode;
+  final String questionText;
+  final int sortOrder;
+  final bool isActive;
+
+  const _QuestionDialogResult({
+    required this.categoryCode,
+    required this.questionText,
+    required this.sortOrder,
+    required this.isActive,
+  });
+}
+
+class _PassionQuestionEditorDialog
+    extends StatefulWidget {
+  final PassionQuestionContentModel?
+      question;
+
+  final List<PassionCategoryContentModel>
+      categories;
+
+  final int defaultSortOrder;
+
+  const _PassionQuestionEditorDialog({
+    required this.categories,
+    required this.defaultSortOrder,
+    this.question,
+  });
+
+  @override
+  State<_PassionQuestionEditorDialog>
+      createState() =>
+          _PassionQuestionEditorDialogState();
+}
+
+class _PassionQuestionEditorDialogState
+    extends State<
+        _PassionQuestionEditorDialog> {
+  late final TextEditingController
+      _questionController;
+
+  late final TextEditingController
+      _orderController;
+
+  late String _categoryCode;
+  late bool _isActive;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _questionController =
+        TextEditingController(
+      text:
+          widget.question?.questionText ??
+              '',
+    );
+
+    _orderController =
+        TextEditingController(
+      text:
+          '${widget.question?.sortOrder ?? widget.defaultSortOrder}',
+    );
+
+    _categoryCode =
+        widget.question?.categoryCode ??
+            widget.categories.first.code;
+
+    _isActive =
+        widget.question?.isActive ?? true;
+  }
+
+  @override
+  void dispose() {
+    _questionController.dispose();
+    _orderController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final String questionText =
+        _questionController.text.trim();
+
+    if (questionText.isEmpty) {
+      return;
+    }
+
+    final int sortOrder =
+        int.tryParse(
+          _orderController.text.trim(),
+        ) ??
+        0;
+
+    Navigator.of(context).pop(
+      _QuestionDialogResult(
+        categoryCode: _categoryCode,
+        questionText: questionText,
+        sortOrder: sortOrder,
+        isActive: _isActive,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(24),
+      ),
+      title: Text(
+        widget.question == null
+            ? 'Add FYP Question'
+            : 'Edit FYP Question',
+        style: GoogleFonts.poppins(
+          fontWeight: FontWeight.w700,
+          color: AppColors.primary,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DropdownButtonFormField<String>(
+              value: _categoryCode,
+              items: widget.categories
+                  .map(
+                    (
+                      PassionCategoryContentModel
+                          category,
+                    ) =>
+                        DropdownMenuItem<
+                            String>(
+                      value: category.code,
+                      child: Text(
+                        '${category.emoji} ${category.name}',
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (String? value) {
+                if (value == null) {
+                  return;
+                }
+
+                setState(() {
+                  _categoryCode = value;
+                });
+              },
+              decoration: InputDecoration(
+                labelText:
+                    'Passion category',
+                filled: true,
+                fillColor:
+                    AppColors.primarySoft,
+                border: OutlineInputBorder(
+                  borderRadius:
+                      BorderRadius.circular(
+                    18,
+                  ),
+                  borderSide:
+                      BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            _DialogField(
+              controller:
+                  _questionController,
+              label: 'Question',
+              maxLines: 4,
+              maxLength: 500,
+            ),
+            const SizedBox(height: 10),
+            _DialogField(
+              controller:
+                  _orderController,
+              label: 'Sort order',
+              keyboardType:
+                  TextInputType.number,
+            ),
+            SwitchListTile(
+              value: _isActive,
+              contentPadding:
+                  EdgeInsets.zero,
+              title: const Text(
+                'Active in FYP test',
+              ),
+              onChanged: (bool value) {
+                setState(() {
+                  _isActive = value;
+                });
+              },
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
       ],
     );
   }
