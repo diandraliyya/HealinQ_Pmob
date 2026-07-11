@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -69,44 +69,113 @@ class PaymentService {
 
   Future<String> uploadPaymentProof({
     required String paymentId,
-    required File file,
+    required Uint8List bytes,
+    required String fileName,
+    String? mimeType,
   }) async {
     final User? user = _client.auth.currentUser;
+
     if (user == null) {
-      throw Exception('Sesi login tidak ditemukan. Silakan login kembali.');
+      throw Exception(
+        'Sesi login tidak ditemukan. Silakan login kembali.',
+      );
     }
 
-    try {
-      final String extension = file.path.split('.').last.toLowerCase();
-      final String contentType;
-      switch (extension) {
-        case 'jpg':
-        case 'jpeg':
-          contentType = 'image/jpeg';
-          break;
-        case 'png':
-          contentType = 'image/png';
-          break;
-        case 'webp':
-          contentType = 'image/webp';
-          break;
-        default:
-          throw Exception('Format bukti pembayaran tidak didukung.');
-      }
+    if (bytes.isEmpty) {
+      throw Exception(
+        'File bukti pembayaran kosong atau tidak dapat dibaca.',
+      );
+    }
 
-      final String path =
-          '${user.id}/$paymentId/${DateTime.now().millisecondsSinceEpoch}.$extension';
-      await _client.storage.from('payment-proofs').upload(
+    const int maximumFileSize = 2 * 1024 * 1024;
+
+    if (bytes.length > maximumFileSize) {
+      throw Exception(
+        'Ukuran bukti pembayaran maksimal 2 MB.',
+      );
+    }
+
+    final String extension = _resolveImageExtension(
+      fileName: fileName,
+      mimeType: mimeType,
+    );
+
+    final String contentType =
+        _contentTypeForExtension(extension);
+
+    final String path =
+        '${user.id}/$paymentId/'
+        '${DateTime.now().millisecondsSinceEpoch}.$extension';
+
+    try {
+      await _client.storage
+          .from('payment-proofs')
+          .uploadBinary(
             path,
-            file,
+            bytes,
             fileOptions: FileOptions(
               upsert: false,
               contentType: contentType,
+              cacheControl: '3600',
             ),
           );
+
       return path;
     } on StorageException catch (error) {
       throw Exception(error.message);
+    }
+  }
+
+  String _resolveImageExtension({
+    required String fileName,
+    String? mimeType,
+  }) {
+    final String normalizedMimeType =
+        mimeType?.trim().toLowerCase() ?? '';
+
+    switch (normalizedMimeType) {
+      case 'image/jpeg':
+      case 'image/jpg':
+        return 'jpg';
+      case 'image/png':
+        return 'png';
+      case 'image/webp':
+        return 'webp';
+    }
+
+    final String normalizedFileName =
+        fileName.trim().toLowerCase();
+
+    if (normalizedFileName.contains('.')) {
+      final String extension =
+          normalizedFileName.split('.').last;
+
+      if (<String>{
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+      }.contains(extension)) {
+        return extension == 'jpeg' ? 'jpg' : extension;
+      }
+    }
+
+    throw Exception(
+      'Format bukti pembayaran harus JPG, JPEG, PNG, atau WEBP.',
+    );
+  }
+
+  String _contentTypeForExtension(
+    String extension,
+  ) {
+    switch (extension) {
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'jpg':
+      default:
+        return 'image/jpeg';
     }
   }
 

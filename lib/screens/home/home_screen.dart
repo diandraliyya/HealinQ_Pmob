@@ -1,22 +1,27 @@
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../services/profile_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../models/booking_model.dart';
 import '../../models/content_models.dart';
 import '../../models/models.dart';
+import '../../models/user_counselor_model.dart';
+import '../../services/booking_service.dart';
 import '../../services/content_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/profile_service.dart';
+import '../../services/user_consultation_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/app_state.dart';
-import '../../utils/app_data.dart';
 import '../../widgets/common_widgets.dart';
-import '../konsultasi/konsultasi_screen.dart';
-import '../self_healing/self_healing_screen.dart';
 import '../fyp/fyp_screen.dart';
+import '../konsultasi/booking_ticket_screen.dart';
+import '../konsultasi/konsultasi_screen.dart';
+import '../konsultasi/my_bookings_screen.dart';
+import '../self_healing/self_healing_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -26,7 +31,21 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final BookingService _bookingService = BookingService();
+  final UserConsultationService _consultationService =
+      UserConsultationService();
+
   int _navIndex = 0;
+
+  List<BookingModel> _homeBookings = <BookingModel>[];
+  List<UserCounselorModel> _homeCounselors =
+      <UserCounselorModel>[];
+
+  bool _isLoadingBookings = true;
+  bool _isLoadingCounselors = true;
+
+  String? _bookingError;
+  String? _counselorError;
 
   @override
   void initState() {
@@ -34,18 +53,214 @@ class _HomeScreenState extends State<HomeScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-
-      final appState = context.read<AppState>();
-
-      appState.loadJournals().catchError((_) {});
-      appState.loadHomeData().catchError((_) {});
+      _refreshHomeData(showLoading: true);
     });
+  }
+
+  Future<void> _refreshHomeData({
+    bool showLoading = false,
+  }) async {
+    await Future.wait<void>(<Future<void>>[
+      _loadBookings(showLoading: showLoading),
+      _loadCounselors(showLoading: showLoading),
+      _refreshProfileQuietly(),
+      _refreshJournalsQuietly(),
+    ]);
+  }
+
+  Future<void> _loadBookings({
+    bool showLoading = true,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isLoadingBookings = true;
+        _bookingError = null;
+      });
+    }
+
+    try {
+      final List<BookingModel> result =
+          await _bookingService.getMyBookings();
+
+      result.sort(
+        (BookingModel first, BookingModel second) =>
+            second.scheduledStart.compareTo(
+          first.scheduledStart,
+        ),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _homeBookings = result;
+        _bookingError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _bookingError = _cleanError(error);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingBookings = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadCounselors({
+    bool showLoading = true,
+  }) async {
+    if (showLoading && mounted) {
+      setState(() {
+        _isLoadingCounselors = true;
+        _counselorError = null;
+      });
+    }
+
+    try {
+      final List<UserCounselorModel> online =
+          await _consultationService.getCounselors(
+        offline: false,
+      );
+
+      final List<UserCounselorModel> offline =
+          await _consultationService.getCounselors(
+        offline: true,
+      );
+
+      final Map<String, UserCounselorModel> merged =
+          <String, UserCounselorModel>{};
+
+      for (final UserCounselorModel counselor
+          in <UserCounselorModel>[...online, ...offline]) {
+        merged[counselor.id] = counselor;
+      }
+
+      final List<UserCounselorModel> result =
+          merged.values.toList()
+            ..sort(
+              (
+                UserCounselorModel first,
+                UserCounselorModel second,
+              ) {
+                final int ratingComparison =
+                    second.rating.compareTo(
+                  first.rating,
+                );
+
+                if (ratingComparison != 0) {
+                  return ratingComparison;
+                }
+
+                return second.totalReviews.compareTo(
+                  first.totalReviews,
+                );
+              },
+            );
+
+      if (!mounted) return;
+
+      setState(() {
+        _homeCounselors = result;
+        _counselorError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _counselorError = _cleanError(error);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingCounselors = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshProfileQuietly() async {
+    try {
+      final User? authUser =
+          Supabase.instance.client.auth.currentUser;
+
+      if (authUser == null) return;
+
+      final Map<String, dynamic> profile =
+          Map<String, dynamic>.from(
+        await Supabase.instance.client
+            .from('profiles')
+            .select()
+            .eq('id', authUser.id)
+            .single(),
+      );
+
+      if (!mounted) return;
+
+      context.read<AppState>().setUserFromProfile(
+            profile,
+          );
+    } catch (_) {
+      // Home tetap dapat ditampilkan memakai profil yang sudah ada.
+    }
+  }
+
+  Future<void> _refreshJournalsQuietly() async {
+    try {
+      await context.read<AppState>().loadJournals(
+            force: true,
+          );
+    } catch (_) {
+      // Error jurnal ditampilkan oleh state jurnal pada section terkait.
+    }
+  }
+
+  Future<void> _openBookingDetail(
+    BookingModel booking,
+  ) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => BookingTicketScreen(
+          consultationId: booking.consultationId,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      await _loadBookings(showLoading: false);
+    }
+  }
+
+  Future<void> _openMyBookings() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const MyBookingsScreen(),
+      ),
+    );
+
+    if (mounted) {
+      await _loadBookings(showLoading: false);
+    }
   }
 
   void _changeTab(int index) {
     setState(() {
       _navIndex = index;
     });
+
+    if (index == 0) {
+      _refreshHomeData(showLoading: false);
+    }
+  }
+
+  String _cleanError(Object error) {
+    return error
+        .toString()
+        .replaceFirst('Exception: ', '')
+        .trim();
   }
 
   @override
@@ -53,9 +268,32 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: IndexedStack(
         index: _navIndex,
-        children: [
+        children: <Widget>[
           _HomeContent(
+            bookings: _homeBookings,
+            counselors: _homeCounselors,
+            isLoadingBookings: _isLoadingBookings,
+            isLoadingCounselors: _isLoadingCounselors,
+            bookingError: _bookingError,
+            counselorError: _counselorError,
             onNavigateToTab: _changeTab,
+            onRefresh: () {
+              return _refreshHomeData(
+                showLoading: false,
+              );
+            },
+            onRetryBookings: () {
+              return _loadBookings(
+                showLoading: true,
+              );
+            },
+            onRetryCounselors: () {
+              return _loadCounselors(
+                showLoading: true,
+              );
+            },
+            onOpenBooking: _openBookingDetail,
+            onOpenMyBookings: _openMyBookings,
           ),
           const KonsultasiScreen(),
           const _ProfileTab(),
@@ -72,170 +310,134 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeContent extends StatelessWidget {
+  final List<BookingModel> bookings;
+  final List<UserCounselorModel> counselors;
+  final bool isLoadingBookings;
+  final bool isLoadingCounselors;
+  final String? bookingError;
+  final String? counselorError;
   final ValueChanged<int> onNavigateToTab;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onRetryBookings;
+  final Future<void> Function() onRetryCounselors;
+  final Future<void> Function(
+    BookingModel booking,
+  ) onOpenBooking;
+  final Future<void> Function() onOpenMyBookings;
 
   const _HomeContent({
+    required this.bookings,
+    required this.counselors,
+    required this.isLoadingBookings,
+    required this.isLoadingCounselors,
+    required this.bookingError,
+    required this.counselorError,
     required this.onNavigateToTab,
+    required this.onRefresh,
+    required this.onRetryBookings,
+    required this.onRetryCounselors,
+    required this.onOpenBooking,
+    required this.onOpenMyBookings,
   });
 
-  static const Color _baseColor = AppColors.bgGradientStart;
+  static const Color _baseColor =
+      AppColors.bgGradientStart;
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final user = state.currentUser;
-    final now = DateTime.now();
-    final dateStr = DateFormat('EEEE, d MMMM yyyy').format(now);
+    final AppState state = context.watch<AppState>();
+    final UserModel? user = state.currentUser;
+    final DateTime now = DateTime.now();
+    final String dateStr = DateFormat(
+      'EEEE, d MMMM yyyy',
+    ).format(now);
 
     return Container(
       color: _baseColor,
       child: Stack(
         fit: StackFit.expand,
-        children: [
+        children: <Widget>[
           const _SoftPageBackground(),
           SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'HealinQ',
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                      const _MascotImage(size: 36),
-                    ],
-                  ),
+            child: RefreshIndicator(
+              color: AppColors.primary,
+              onRefresh: onRefresh,
+              child: ListView(
+                physics:
+                    const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(
+                  20,
+                  12,
+                  20,
+                  28,
                 ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Hello, ${user?.name ?? 'Buddy'}!',
-                          style: GoogleFonts.poppins(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        Text(
-                          '$dateStr. How\'s your day?',
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            color: AppColors.textMedium,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildGreetingCard(),
-                        const SizedBox(height: 20),
-                        Text(
-                          'QUICK ACCESS',
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primary,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildQuickAccess(),
-                        const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Recent Journal',
-                              style: GoogleFonts.poppins(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => onNavigateToTab(3),
-                              child: Text(
-                                'View All',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 13,
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        _buildRecentJournals(
-                          context,
-                          state,
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Consultation History',
-                          style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        _buildConsultationHistory(context),
-                        const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Counselor',
-                              style: GoogleFonts.poppins(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => onNavigateToTab(1),
-                              child: Text(
-                                'Go to Consultation',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 13,
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        ...state.homeCounselors.take(3).map(
-                              (c) => CounselorCard(
-                                name: c.name,
-                                specialization: c.specialization,
-                                rating: c.rating,
-                                showBook: false,
-                              ),
-                            ),
-                        const SizedBox(height: 20),
-                        const _DailyLyricCard(),
-                        const SizedBox(height: 20),
-                        const SizedBox(height: 20),
-                      ],
+                children: <Widget>[
+                  _buildTopBar(),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Hello, ${user?.name ?? 'Buddy'}!',
+                    style: GoogleFonts.poppins(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
                     ),
                   ),
-                ),
-              ],
+                  Text(
+                    '$dateStr. How\'s your day?',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: AppColors.textMedium,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildGreetingCard(),
+                  const SizedBox(height: 20),
+                  Text(
+                    'QUICK ACCESS',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildQuickAccess(),
+                  const SizedBox(height: 20),
+                  _SectionHeader(
+                    title: 'Recent Journal',
+                    actionLabel: 'View All',
+                    onAction: () {
+                      onNavigateToTab(3);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  _buildRecentJournals(
+                    context,
+                    state,
+                  ),
+                  const SizedBox(height: 20),
+                  _SectionHeader(
+                    title: 'Consultation History',
+                    actionLabel: 'View All',
+                    onAction: onOpenMyBookings,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildConsultationHistory(),
+                  const SizedBox(height: 20),
+                  _SectionHeader(
+                    title: 'Counselor',
+                    actionLabel: 'Go to Consultation',
+                    onAction: () {
+                      onNavigateToTab(1);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  _buildCounselorSection(),
+                  const SizedBox(height: 20),
+                  const _DailyLyricCard(),
+                ],
+              ),
             ),
           ),
         ],
@@ -243,82 +445,58 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
+  Widget _buildTopBar() {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            'HealinQ',
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primary,
+            ),
+          ),
+        ),
+        const _MascotImage(size: 36),
+      ],
+    );
+  }
+
   Widget _buildRecentJournals(
     BuildContext context,
     AppState state,
   ) {
-    if (state.isLoadingJournals && state.journals.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 18),
-        child: Center(
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: AppColors.primary,
-          ),
-        ),
-      );
+    if (state.isLoadingJournals &&
+        state.journals.isEmpty) {
+      return const _HomeLoadingCard();
     }
 
-    if (state.journalError != null && state.journals.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: <Widget>[
-            const Icon(
-              Icons.error_outline_rounded,
-              color: AppColors.error,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                state.journalError!,
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  color: AppColors.textMedium,
-                ),
-              ),
-            ),
-            IconButton(
-              onPressed: () {
-                context
-                    .read<AppState>()
-                    .loadJournals(force: true)
-                    .catchError((_) {});
-              },
-              icon: const Icon(
-                Icons.refresh_rounded,
-                color: AppColors.primary,
-              ),
-            ),
-          ],
-        ),
+    if (state.journalError != null &&
+        state.journals.isEmpty) {
+      return _HomeErrorCard(
+        message: state.journalError!,
+        onRetry: () async {
+          try {
+            await context
+                .read<AppState>()
+                .loadJournals(force: true);
+          } catch (_) {
+            // Error tetap ditampilkan melalui journalError.
+          }
+        },
       );
     }
 
     if (state.journals.isEmpty) {
-      return GestureDetector(
-        onTap: () => onNavigateToTab(3),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Text(
-            'Belum ada jurnal. Tap untuk mulai menulis.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: AppColors.textMedium,
-            ),
-          ),
-        ),
+      return _HomeEmptyCard(
+        icon: Icons.menu_book_rounded,
+        title: 'Belum ada jurnal',
+        description:
+            'Tap untuk mulai menulis dan menyimpan ceritamu.',
+        onTap: () {
+          onNavigateToTab(3);
+        },
       );
     }
 
@@ -326,10 +504,107 @@ class _HomeContent extends StatelessWidget {
       children: state.journals
           .take(3)
           .map(
-            (JournalModel journal) => _buildJournalItem(
+            (JournalModel journal) =>
+                _buildJournalItem(
               journal.moodTag ?? '😐',
-              journal.title.isEmpty ? 'Untitled Note' : journal.title,
+              journal.title.isEmpty
+                  ? 'Untitled Note'
+                  : journal.title,
               journal.createdAt,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Widget _buildConsultationHistory() {
+    if (isLoadingBookings && bookings.isEmpty) {
+      return const _HomeLoadingCard();
+    }
+
+    if (bookingError != null && bookings.isEmpty) {
+      return _HomeErrorCard(
+        message: bookingError!,
+        onRetry: onRetryBookings,
+      );
+    }
+
+    if (bookings.isEmpty) {
+      return _HomeEmptyCard(
+        icon: Icons.receipt_long_outlined,
+        title: 'Belum ada konsultasi',
+        description:
+            'Booking konsultasi pertamamu akan tampil di sini.',
+        onTap: () {
+          onNavigateToTab(1);
+        },
+      );
+    }
+
+    final List<BookingModel> visible =
+        bookings.take(5).toList();
+
+    return SizedBox(
+      height: 154,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: visible.length,
+        separatorBuilder: (_, __) =>
+            const SizedBox(width: 10),
+        itemBuilder: (
+          BuildContext context,
+          int index,
+        ) {
+          final BookingModel booking =
+              visible[index];
+
+          return _HomeBookingCard(
+            booking: booking,
+            onTap: () {
+              onOpenBooking(booking);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCounselorSection() {
+    if (isLoadingCounselors &&
+        counselors.isEmpty) {
+      return const _HomeLoadingCard();
+    }
+
+    if (counselorError != null &&
+        counselors.isEmpty) {
+      return _HomeErrorCard(
+        message: counselorError!,
+        onRetry: onRetryCounselors,
+      );
+    }
+
+    if (counselors.isEmpty) {
+      return _HomeEmptyCard(
+        icon: Icons.psychology_alt_rounded,
+        title: 'Belum ada counselor tersedia',
+        description:
+            'Counselor dengan jadwal aktif akan tampil di sini.',
+        onTap: () {
+          onNavigateToTab(1);
+        },
+      );
+    }
+
+    return Column(
+      children: counselors
+          .take(3)
+          .map(
+            (UserCounselorModel counselor) =>
+                _HomeCounselorCard(
+              counselor: counselor,
+              onTap: () {
+                onNavigateToTab(1);
+              },
             ),
           )
           .toList(),
@@ -342,7 +617,7 @@ class _HomeContent extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white.withOpacity(0.85),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
+        boxShadow: <BoxShadow>[
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
@@ -350,8 +625,9 @@ class _HomeContent extends StatelessWidget {
         ],
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: <Widget>[
           Expanded(
             child: Text(
               'Aku Alin, temanmu di HealinQ. Yuk kenali perasaanmu, pahami dirimu lebih dalam, dan tumbuh pelan-pelan bersama.',
@@ -374,14 +650,16 @@ class _HomeContent extends StatelessWidget {
 
   Widget _buildQuickAccess() {
     return GestureDetector(
-      onTap: () => onNavigateToTab(3),
+      onTap: () {
+        onNavigateToTab(3);
+      },
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.pinkCard,
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [
+          boxShadow: <BoxShadow>[
             BoxShadow(
               color: Colors.black.withOpacity(0.08),
               blurRadius: 10,
@@ -390,22 +668,29 @@ class _HomeContent extends StatelessWidget {
           ],
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
+          children: <Widget>[
             Image.asset(
               'assets/images/jar.png',
               width: 56,
               height: 56,
               fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) {
-                return const SizedBox(width: 56, height: 56);
+              errorBuilder: (
+                BuildContext context,
+                Object error,
+                StackTrace? stackTrace,
+              ) {
+                return const SizedBox(
+                  width: 56,
+                  height: 56,
+                );
               },
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: <Widget>[
                   Text(
                     'Jar of Happiness',
                     style: GoogleFonts.poppins(
@@ -425,21 +710,34 @@ class _HomeContent extends StatelessWidget {
                 ],
               ),
             ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.primary,
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildJournalItem(String emoji, String title, DateTime date) {
-    final dateStr = DateFormat('d MMM').format(date);
+  Widget _buildJournalItem(
+    String emoji,
+    String title,
+    DateTime date,
+  ) {
+    final String dateStr =
+        DateFormat('d MMM').format(date);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
+        boxShadow: <BoxShadow>[
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
             blurRadius: 6,
@@ -447,7 +745,7 @@ class _HomeContent extends StatelessWidget {
         ],
       ),
       child: Row(
-        children: [
+        children: <Widget>[
           Container(
             width: 40,
             height: 40,
@@ -468,7 +766,10 @@ class _HomeContent extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Text(emoji, style: const TextStyle(fontSize: 18)),
+          Text(
+            emoji,
+            style: const TextStyle(fontSize: 18),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -485,365 +786,511 @@ class _HomeContent extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildConsultationHistory(BuildContext context) {
-    final state = context.watch<AppState>();
-    final bookings = [...state.homeBookings]..sort(
-        (a, b) => b.scheduledStart.compareTo(a.scheduledStart),
-      );
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final String actionLabel;
+  final VoidCallback onAction;
 
-    if (bookings.isEmpty) {
-      return SizedBox(
-        height: 68,
-        child: Center(
+  const _SectionHeader({
+    required this.title,
+    required this.actionLabel,
+    required this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Expanded(
           child: Text(
-            'Belum ada konsultasi',
+            title,
             style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: AppColors.textMedium,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primary,
             ),
           ),
         ),
-      );
-    }
-
-    return SizedBox(
-      height: 68,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: bookings.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final item = bookings[index];
-
-          final day = DateFormat('d').format(item.scheduledStart);
-          final month = DateFormat('MMM').format(item.scheduledStart);
-
-          return GestureDetector(
-            onTap: () {
-              // nanti bisa diarahkan ke detail booking
-            },
-            child: Container(
-              width: 72,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 8,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.pinkCard,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: AppColors.primaryLight,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  '$day\n$month',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
+        TextButton(
+          onPressed: onAction,
+          style: TextButton.styleFrom(
+            minimumSize: Size.zero,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 4,
+              vertical: 4,
             ),
-          );
-        },
+            tapTargetSize:
+                MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(
+            actionLabel,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppColors.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HomeBookingCard extends StatelessWidget {
+  final BookingModel booking;
+  final VoidCallback onTap;
+
+  const _HomeBookingCard({
+    required this.booking,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color statusColor =
+        _statusColor(booking.consultationStatus);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Ink(
+          width: 202,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.white.withOpacity(0.95),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: booking.isOnline
+                        ? AppColors.secondaryLight
+                        : AppColors.primarySoft,
+                    child: Icon(
+                      booking.isOnline
+                          ? Icons.videocam_rounded
+                          : Icons.location_on_rounded,
+                      color: booking.isOnline
+                          ? AppColors.teal
+                          : AppColors.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      booking.counselorName,
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                DateFormat('d MMM yyyy • HH:mm').format(
+                  booking.scheduledStart,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textMedium,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                booking.bookingCode,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  fontSize: 9,
+                  color: AppColors.textLight,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.11),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  booking.consultationStatusLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  void _showConsultationHistorySheet(
-    BuildContext context,
-    HomeConsultationHistoryItem item,
-  ) {
-    final dateStr = DateFormat('EEEE, d MMMM yyyy').format(item.scheduledAt);
-    final endHour = item.scheduledAt.add(const Duration(hours: 1));
-    final timeStr =
-        '${DateFormat('HH.00').format(item.scheduledAt)}-${DateFormat('HH.00').format(endHour)} WIB';
+  static Color _statusColor(String status) {
+    switch (status) {
+      case 'pending_payment':
+        return const Color(0xFFD68A1F);
+      case 'waiting_verification':
+        return AppColors.brandBlue;
+      case 'confirmed':
+      case 'ongoing':
+      case 'completed':
+        return AppColors.success;
+      case 'cancelled':
+      case 'expired':
+        return AppColors.error;
+      default:
+        return AppColors.primary;
+    }
+  }
+}
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return FractionallySizedBox(
-          heightFactor: 0.78,
+class _HomeCounselorCard extends StatelessWidget {
+  final UserCounselorModel counselor;
+  final VoidCallback onTap;
+
+  const _HomeCounselorCard({
+    required this.counselor,
+    required this.onTap,
+  });
+
+  static String _buildAvatarUrl(
+    String? avatarPath,
+  ) {
+    final String path =
+        avatarPath?.trim() ?? '';
+
+    if (path.isEmpty) {
+      return '';
+    }
+
+    if (path.startsWith('http://') ||
+        path.startsWith('https://')) {
+      return path;
+    }
+
+    return Supabase.instance.client.storage
+        .from('profile-pictures')
+        .getPublicUrl(path);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String avatarUrl =
+        _buildAvatarUrl(
+      counselor.avatarPath,
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppColors.white.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 7,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Container(
-                  width: 48,
-                  height: 5,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.8),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+            padding: const EdgeInsets.all(13),
+            child: Row(
+              children: <Widget>[
+                CircleAvatar(
+                  radius: 27,
+                  backgroundColor:
+                      AppColors.secondaryLight,
+                  backgroundImage:
+                      avatarUrl.trim().isEmpty
+                          ? null
+                          : NetworkImage(avatarUrl),
+                  child: avatarUrl.trim().isEmpty
+                      ? const Icon(
+                          Icons
+                              .medical_services_rounded,
+                          color: AppColors.teal,
+                          size: 27,
+                        )
+                      : null,
                 ),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: SingleChildScrollView(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primary.withOpacity(0.12),
-                            blurRadius: 18,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        counselor.name,
+                        maxLines: 1,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight:
+                              FontWeight.w700,
+                          color: AppColors.textDark,
+                        ),
                       ),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: double.infinity,
-                            height: 56,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.only(
-                                topLeft: Radius.circular(24),
-                                topRight: Radius.circular(24),
+                      const SizedBox(height: 2),
+                      Text(
+                        counselor.specialization,
+                        maxLines: 1,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          color:
+                              AppColors.textMedium,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: <Widget>[
+                          const Icon(
+                            Icons.star_rounded,
+                            color:
+                                AppColors.starYellow,
+                            size: 15,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '${counselor.rating.toStringAsFixed(1)} '
+                            '(${counselor.totalReviews})',
+                            style: GoogleFonts.poppins(
+                              fontSize: 10,
+                              fontWeight:
+                                  FontWeight.w600,
+                              color:
+                                  AppColors.textDark,
+                            ),
+                          ),
+                          if (counselor
+                              .location.isNotEmpty) ...<Widget>[
+                            const SizedBox(width: 8),
+                            const Icon(
+                              Icons
+                                  .location_on_outlined,
+                              size: 13,
+                              color:
+                                  AppColors.textLight,
+                            ),
+                            const SizedBox(width: 2),
+                            Expanded(
+                              child: Text(
+                                counselor.location,
+                                maxLines: 1,
+                                overflow: TextOverflow
+                                    .ellipsis,
+                                style:
+                                    GoogleFonts.poppins(
+                                  fontSize: 9,
+                                  color: AppColors
+                                      .textMedium,
+                                ),
                               ),
                             ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    const CircleAvatar(
-                                      radius: 28,
-                                      backgroundColor: AppColors.secondaryLight,
-                                      child: Icon(
-                                        Icons.person,
-                                        color: AppColors.teal,
-                                        size: 32,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            item.counselor.name,
-                                            style: GoogleFonts.poppins(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 14,
-                                              color: AppColors.textDark,
-                                            ),
-                                          ),
-                                          Text(
-                                            '${item.counselor.specialization} | ${item.type}',
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 12,
-                                              color: AppColors.textMedium,
-                                            ),
-                                          ),
-                                          if (item.isVerified) ...[
-                                            const SizedBox(height: 4),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 2,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: AppColors.success
-                                                    .withOpacity(0.1),
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  const Icon(
-                                                    Icons.check_circle_rounded,
-                                                    color: AppColors.success,
-                                                    size: 14,
-                                                  ),
-                                                  Text(
-                                                    ' Verified',
-                                                    style: GoogleFonts.poppins(
-                                                      fontSize: 11,
-                                                      color: AppColors.success,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                const Divider(color: Color(0xFFFFB6C1)),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _infoBox(
-                                        Icons.calendar_today_rounded,
-                                        'Tanggal',
-                                        dateStr,
-                                        AppColors.primary,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _infoBox(
-                                        Icons.access_time_rounded,
-                                        'Time Session',
-                                        timeStr,
-                                        AppColors.primary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                _fullInfoBox(
-                                  Icons.confirmation_number_rounded,
-                                  'Booking Code',
-                                  item.bookingCode,
-                                ),
-                                const SizedBox(height: 8),
-                                if (item.isOffline)
-                                  _fullInfoBox(
-                                    Icons.location_on_rounded,
-                                    'Location',
-                                    item.counselor.location,
-                                  ),
-                                if (item.isOffline) const SizedBox(height: 8),
-                                _fullInfoBox(
-                                  Icons.chat_bubble_outline_rounded,
-                                  'Consultation Preview',
-                                  item.consultationPreview,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 20,
-                                  height: 20,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.bgGradientStart,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const Expanded(
-                                  child: _DashedDivider(),
-                                ),
-                                Container(
-                                  width: 20,
-                                  height: 20,
-                                  decoration: const BoxDecoration(
-                                    color: AppColors.primarySoft,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
+                          ],
                         ],
                       ),
-                    ),
+                    ],
                   ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textLight,
                 ),
               ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
+}
 
-  Widget _infoBox(IconData icon, String label, String value, Color color) {
+class _HomeLoadingCard extends StatelessWidget {
+  const _HomeLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      height: 86,
+      width: double.infinity,
       decoration: BoxDecoration(
-        color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.white.withOpacity(0.92),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  color: AppColors.textMedium,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
+      child: const Center(
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.primary,
+        ),
       ),
     );
   }
+}
 
-  Widget _fullInfoBox(IconData icon, String label, String value) {
+class _HomeErrorCard extends StatelessWidget {
+  final String message;
+  final Future<void> Function() onRetry;
+
+  const _HomeErrorCard({
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: AppColors.primary, size: 14),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: GoogleFonts.poppins(
-                  fontSize: 11,
-                  color: AppColors.textMedium,
-                ),
-              ),
-            ],
+      child: Row(
+        children: <Widget>[
+          const Icon(
+            Icons.error_outline_rounded,
+            color: AppColors.error,
           ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: GoogleFonts.poppins(
+                fontSize: 10,
+                color: AppColors.textMedium,
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: onRetry,
+            icon: const Icon(
+              Icons.refresh_rounded,
               color: AppColors.primary,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HomeEmptyCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback onTap;
+
+  const _HomeEmptyCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.white.withOpacity(0.94),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: <Widget>[
+              CircleAvatar(
+                radius: 22,
+                backgroundColor:
+                    AppColors.primarySoft,
+                child: Icon(
+                  icon,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      title,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight:
+                            FontWeight.w700,
+                        color:
+                            AppColors.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      description,
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        color:
+                            AppColors.textMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textLight,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1066,8 +1513,12 @@ class _ProfileTabState extends State<_ProfileTab> {
     try {
       final ProfileService service = ProfileService();
 
+      final bytes = await image.readAsBytes();
+
       await service.uploadAvatar(
-        file: File(image.path),
+        bytes: bytes,
+        fileName: image.name,
+        mimeType: image.mimeType,
       );
 
       final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -1261,15 +1712,33 @@ class _ProfileTabState extends State<_ProfileTab> {
                   const SizedBox(height: 10),
                   _profileMenuCard(
                     context,
-                    icon: Icons.settings_rounded,
-                    title: 'Settings',
-                    subtitle: 'Notifications and password',
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const _SettingsScreen(),
+                    icon: Icons.lock_outline_rounded,
+                    title: 'Change Password',
+                    subtitle: 'Update your account password',
+                    onTap: () async {
+                      final bool? changed =
+                          await Navigator.of(context).push<bool>(
+                        MaterialPageRoute<bool>(
+                          builder: (_) =>
+                              const _ChangePasswordScreen(),
                         ),
                       );
+
+                      if (!context.mounted || changed != true) {
+                        return;
+                      }
+
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Password berhasil diperbarui.',
+                            ),
+                            backgroundColor: AppColors.success,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
                     },
                   ),
                   const SizedBox(height: 10),
@@ -1683,32 +2152,35 @@ class _EditProfileScreenState extends State<_EditProfileScreen> {
   }
 }
 
-class _SettingsScreen extends StatefulWidget {
-  const _SettingsScreen();
-
-  @override
-  State<_SettingsScreen> createState() => _SettingsScreenState();
-}
-
 class _ChangePasswordScreen extends StatefulWidget {
   const _ChangePasswordScreen();
 
   @override
-  State<_ChangePasswordScreen> createState() => _ChangePasswordScreenState();
+  State<_ChangePasswordScreen> createState() =>
+      _ChangePasswordScreenState();
 }
 
-class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
-  final _formKey = GlobalKey<FormState>();
+class _ChangePasswordScreenState
+    extends State<_ChangePasswordScreen> {
+  final GlobalKey<FormState> _formKey =
+      GlobalKey<FormState>();
 
-  final TextEditingController _currentPasswordController =
+  final AuthService _authService = AuthService();
+
+  final TextEditingController
+      _currentPasswordController =
       TextEditingController();
-  final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
+  final TextEditingController
+      _newPasswordController =
+      TextEditingController();
+  final TextEditingController
+      _confirmPasswordController =
       TextEditingController();
 
   bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -1718,156 +2190,337 @@ class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
     super.dispose();
   }
 
-  void _handleChangePassword() {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _handleChangePassword() async {
+    FocusScope.of(context).unfocus();
 
-    final success = context.read<AppState>().changePassword(
-          currentPassword: _currentPasswordController.text.trim(),
-          newPassword: _newPasswordController.text.trim(),
-        );
+    if (_isLoading) return;
 
-    if (!success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Current password is incorrect'),
+    final bool valid =
+        _formKey.currentState?.validate() ?? false;
+
+    if (!valid) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await _authService.changePassword(
+        currentPassword:
+            _currentPasswordController.text,
+        newPassword:
+            _newPasswordController.text,
+      );
+
+      if (!mounted) return;
+
+      Navigator.of(context).pop(true);
+    } on AuthException catch (error) {
+      if (!mounted) return;
+
+      _showErrorMessage(
+        _translateAuthError(error.message),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      _showErrorMessage(
+        _cleanErrorMessage(error.toString()),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showErrorMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
         ),
       );
-      return;
+  }
+
+  String _translateAuthError(String message) {
+    final String lowerMessage =
+        message.toLowerCase();
+
+    if (lowerMessage.contains(
+          'invalid login credentials',
+        ) ||
+        lowerMessage.contains(
+          'invalid credentials',
+        )) {
+      return 'Password saat ini salah.';
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Password updated successfully'),
-      ),
-    );
+    if (lowerMessage.contains(
+          'different from the old password',
+        ) ||
+        lowerMessage.contains(
+          'same password',
+        )) {
+      return 'Password baru harus berbeda dari password lama.';
+    }
 
-    Navigator.pop(context);
+    if (lowerMessage.contains('weak password') ||
+        lowerMessage.contains(
+          'password should be at least',
+        )) {
+      return 'Password baru belum memenuhi ketentuan keamanan.';
+    }
+
+    if (lowerMessage.contains('network') ||
+        lowerMessage.contains('socket') ||
+        lowerMessage.contains('connection')) {
+      return 'Tidak dapat terhubung ke server. Periksa koneksi internet.';
+    }
+
+    return message;
+  }
+
+  String _cleanErrorMessage(String message) {
+    return message
+        .replaceFirst('Exception: ', '')
+        .trim();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bgGradientStart,
+      backgroundColor:
+          AppColors.bgGradientStart,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.primary,
+        backgroundColor:
+            Colors.transparent,
+        foregroundColor:
+            AppColors.primary,
         title: Text(
           'Change Password',
           style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: AppColors.primary,
+            fontWeight:
+                FontWeight.w600,
+            color:
+                AppColors.primary,
           ),
         ),
       ),
       body: Stack(
         fit: StackFit.expand,
-        children: [
+        children: <Widget>[
           const _SoftPageBackground(),
           SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child:
+                SingleChildScrollView(
+              padding:
+                  const EdgeInsets.fromLTRB(
+                20,
+                8,
+                20,
+                24,
+              ),
               child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppColors.white.withOpacity(0.92),
-                  borderRadius: BorderRadius.circular(24),
+                padding:
+                    const EdgeInsets.all(
+                  20,
+                ),
+                decoration:
+                    BoxDecoration(
+                  color: AppColors.white
+                      .withOpacity(0.92),
+                  borderRadius:
+                      BorderRadius.circular(
+                    24,
+                  ),
                 ),
                 child: Form(
                   key: _formKey,
                   child: Column(
-                    children: [
+                    children: <Widget>[
                       const CircleAvatar(
                         radius: 40,
-                        backgroundColor: AppColors.primaryLight,
+                        backgroundColor:
+                            AppColors
+                                .primaryLight,
                         child: Icon(
                           Icons.lock_rounded,
                           size: 42,
-                          color: AppColors.primary,
+                          color:
+                              AppColors.primary,
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(
+                        height: 20,
+                      ),
                       _passwordField(
-                        controller: _currentPasswordController,
-                        label: 'Current Password',
-                        obscureText: _obscureCurrent,
+                        controller:
+                            _currentPasswordController,
+                        label:
+                            'Current Password',
+                        obscureText:
+                            _obscureCurrent,
+                        enabled:
+                            !_isLoading,
                         onToggle: () {
                           setState(() {
-                            _obscureCurrent = !_obscureCurrent;
+                            _obscureCurrent =
+                                !_obscureCurrent;
                           });
                         },
                         validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
+                          if (value == null ||
+                              value.isEmpty) {
                             return 'Current password cannot be empty';
                           }
                           return null;
                         },
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(
+                        height: 14,
+                      ),
                       _passwordField(
-                        controller: _newPasswordController,
-                        label: 'New Password',
-                        obscureText: _obscureNew,
+                        controller:
+                            _newPasswordController,
+                        label:
+                            'New Password',
+                        obscureText:
+                            _obscureNew,
+                        enabled:
+                            !_isLoading,
                         onToggle: () {
                           setState(() {
-                            _obscureNew = !_obscureNew;
+                            _obscureNew =
+                                !_obscureNew;
                           });
                         },
                         validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
+                          final String password =
+                              value ?? '';
+
+                          if (password.isEmpty) {
                             return 'New password cannot be empty';
                           }
-                          if (value.trim().length < 6) {
+
+                          if (password.length < 6) {
                             return 'Password must be at least 6 characters';
                           }
-                          if (value.trim() ==
-                              _currentPasswordController.text.trim()) {
+
+                          if (password ==
+                              _currentPasswordController
+                                  .text) {
                             return 'New password must be different';
                           }
+
                           return null;
                         },
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(
+                        height: 14,
+                      ),
                       _passwordField(
-                        controller: _confirmPasswordController,
-                        label: 'Confirm New Password',
-                        obscureText: _obscureConfirm,
+                        controller:
+                            _confirmPasswordController,
+                        label:
+                            'Confirm New Password',
+                        obscureText:
+                            _obscureConfirm,
+                        enabled:
+                            !_isLoading,
                         onToggle: () {
                           setState(() {
-                            _obscureConfirm = !_obscureConfirm;
+                            _obscureConfirm =
+                                !_obscureConfirm;
                           });
                         },
                         validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
+                          if (value == null ||
+                              value.isEmpty) {
                             return 'Please confirm your new password';
                           }
-                          if (value.trim() !=
-                              _newPasswordController.text.trim()) {
+
+                          if (value !=
+                              _newPasswordController
+                                  .text) {
                             return 'Confirmation password does not match';
                           }
+
                           return null;
                         },
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(
+                        height: 24,
+                      ),
                       SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _handleChangePassword,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: AppColors.white,
+                        width:
+                            double.infinity,
+                        child:
+                            ElevatedButton(
+                          onPressed:
+                              _isLoading
+                                  ? null
+                                  : _handleChangePassword,
+                          style:
+                              ElevatedButton
+                                  .styleFrom(
+                            backgroundColor:
+                                AppColors
+                                    .primary,
+                            foregroundColor:
+                                AppColors.white,
+                            disabledBackgroundColor:
+                                AppColors
+                                    .primary
+                                    .withOpacity(
+                                      0.55,
+                                    ),
+                            disabledForegroundColor:
+                                AppColors.white,
                             elevation: 0,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
+                            padding:
+                                const EdgeInsets
+                                    .symmetric(
+                              vertical: 15,
+                            ),
+                            shape:
+                                RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                18,
+                              ),
                             ),
                           ),
-                          child: Text(
-                            'Save New Password',
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child:
+                                      CircularProgressIndicator(
+                                    strokeWidth:
+                                        2.2,
+                                    color:
+                                        AppColors
+                                            .white,
+                                  ),
+                                )
+                              : Text(
+                                  'Save New Password',
+                                  style:
+                                      GoogleFonts
+                                          .poppins(
+                                    fontWeight:
+                                        FontWeight
+                                            .w600,
+                                  ),
+                                ),
                         ),
                       ),
                     ],
@@ -1885,12 +2538,16 @@ class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
     required TextEditingController controller,
     required String label,
     required bool obscureText,
+    required bool enabled,
     required VoidCallback onToggle,
     required String? Function(String?) validator,
   }) {
     return TextFormField(
       controller: controller,
       obscureText: obscureText,
+      enabled: enabled,
+      enableSuggestions: false,
+      autocorrect: false,
       validator: validator,
       style: GoogleFonts.poppins(
         fontSize: 14,
@@ -1907,200 +2564,33 @@ class _ChangePasswordScreenState extends State<_ChangePasswordScreen> {
           color: AppColors.primary,
         ),
         suffixIcon: IconButton(
-          onPressed: onToggle,
+          onPressed:
+              enabled ? onToggle : null,
           icon: Icon(
-            obscureText ? Icons.visibility_off : Icons.visibility,
+            obscureText
+                ? Icons.visibility_off
+                : Icons.visibility,
             color: AppColors.textMedium,
           ),
         ),
         filled: true,
-        fillColor: AppColors.primarySoft,
-        contentPadding: const EdgeInsets.symmetric(
+        fillColor:
+            AppColors.primarySoft,
+        contentPadding:
+            const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 16,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius:
+              BorderRadius.circular(16),
           borderSide: BorderSide.none,
         ),
-        errorStyle: GoogleFonts.poppins(fontSize: 11),
-      ),
-    );
-  }
-}
-
-class _SettingsScreenState extends State<_SettingsScreen> {
-  bool _notifications = true;
-  bool _journalReminder = true;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bgGradientStart,
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: AppColors.primary,
-        title: Text(
-          'Settings',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: AppColors.primary,
-          ),
+        errorStyle:
+            GoogleFonts.poppins(
+          fontSize: 11,
         ),
       ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          const _SoftPageBackground(),
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: Column(
-                children: [
-                  _settingsSection(
-                    title: 'Preferences',
-                    children: [
-                      _switchTile(
-                        title: 'Notifications',
-                        subtitle: 'Receive important updates',
-                        value: _notifications,
-                        onChanged: (value) {
-                          setState(() => _notifications = value);
-                        },
-                      ),
-                      _switchTile(
-                        title: 'Journal Reminder',
-                        subtitle: 'Daily reminder to write your journal',
-                        value: _journalReminder,
-                        onChanged: (value) {
-                          setState(() => _journalReminder = value);
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _settingsSection(
-                    title: 'Account',
-                    children: [
-                      _actionTile(
-                        icon: Icons.lock_outline_rounded,
-                        title: 'Change Password',
-                        subtitle: 'Update your account password',
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const _ChangePasswordScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _settingsSection({
-    required String title,
-    required List<Widget> children,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.white.withOpacity(0.92),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...children,
-        ],
-      ),
-    );
-  }
-
-  Widget _switchTile({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return SwitchListTile(
-      value: value,
-      onChanged: onChanged,
-      activeThumbColor: AppColors.primary,
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textDark,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          color: AppColors.textMedium,
-        ),
-      ),
-    );
-  }
-
-  Widget _actionTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: AppColors.primaryLight,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Icon(icon, color: AppColors.primary),
-      ),
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: AppColors.textDark,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          color: AppColors.textMedium,
-        ),
-      ),
-      trailing: const Icon(
-        Icons.chevron_right_rounded,
-        color: AppColors.textLight,
-      ),
-      onTap: onTap,
     );
   }
 }
