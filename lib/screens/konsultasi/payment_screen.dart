@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,7 +33,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Map<String, dynamic>? _paymentDetail;
   Map<String, dynamic>? _selectedMethod;
 
-  File? _proofFile;
+  Uint8List? _proofBytes;
+  String? _proofFileName;
+  String? _proofMimeType;
 
   bool _isLoading = true;
   bool _isSubmitting = false;
@@ -114,12 +116,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       if (selectedImage == null) return;
 
-      final File selectedFile = File(selectedImage.path);
-      final int fileSize = await selectedFile.length();
+      final Uint8List bytes = await selectedImage.readAsBytes();
 
       const int maximumFileSize = 2 * 1024 * 1024;
 
-      if (fileSize > maximumFileSize) {
+      if (bytes.isEmpty) {
+        _showMessage(
+          'File bukti pembayaran kosong atau tidak dapat dibaca.',
+          isError: true,
+        );
+        return;
+      }
+
+      if (bytes.length > maximumFileSize) {
         _showMessage(
           'Ukuran bukti pembayaran maksimal 2 MB.',
           isError: true,
@@ -127,16 +136,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
         return;
       }
 
-      final String extension = selectedImage.path.split('.').last.toLowerCase();
+      final String fileName = selectedImage.name.trim();
+      final String mimeType = selectedImage.mimeType?.trim() ?? '';
 
-      const List<String> allowedExtensions = <String>[
-        'jpg',
-        'jpeg',
-        'png',
-        'webp',
-      ];
-
-      if (!allowedExtensions.contains(extension)) {
+      if (!_isSupportedImage(
+        fileName: fileName,
+        mimeType: mimeType,
+      )) {
         _showMessage(
           'Format gambar harus JPG, JPEG, PNG, atau WEBP.',
           isError: true,
@@ -147,7 +153,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (!mounted) return;
 
       setState(() {
-        _proofFile = selectedFile;
+        _proofBytes = bytes;
+        _proofFileName = fileName;
+        _proofMimeType = mimeType.isEmpty ? null : mimeType;
       });
     } catch (error) {
       if (!mounted) return;
@@ -159,16 +167,54 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  bool _isSupportedImage({
+    required String fileName,
+    required String mimeType,
+  }) {
+    final String normalizedMimeType =
+        mimeType.toLowerCase();
+
+    if (<String>{
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+    }.contains(normalizedMimeType)) {
+      return true;
+    }
+
+    final String normalizedFileName =
+        fileName.toLowerCase();
+
+    if (!normalizedFileName.contains('.')) {
+      return false;
+    }
+
+    final String extension =
+        normalizedFileName.split('.').last;
+
+    return <String>{
+      'jpg',
+      'jpeg',
+      'png',
+      'webp',
+    }.contains(extension);
+  }
+
   Future<void> _submitPayment() async {
     final Map<String, dynamic>? selectedMethod = _selectedMethod;
-    final File? proofFile = _proofFile;
+    final Uint8List? proofBytes = _proofBytes;
+    final String? proofFileName = _proofFileName;
 
     if (selectedMethod == null) {
       _showMessage('Pilih metode pembayaran terlebih dahulu.', isError: true);
       return;
     }
 
-    if (proofFile == null) {
+    if (proofBytes == null ||
+        proofBytes.isEmpty ||
+        proofFileName == null ||
+        proofFileName.isEmpty) {
       _showMessage('Unggah bukti pembayaran terlebih dahulu.', isError: true);
       return;
     }
@@ -188,7 +234,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       uploadedProofPath = await _paymentService.uploadPaymentProof(
         paymentId: widget.paymentId,
-        file: proofFile,
+        bytes: proofBytes,
+        fileName: proofFileName,
+        mimeType: _proofMimeType,
       );
 
       await _paymentService.submitPayment(
@@ -966,7 +1014,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Widget _buildProofUploader() {
-    if (_proofFile != null) {
+    if (_proofBytes != null) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(10),
@@ -981,11 +1029,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
           children: <Widget>[
             ClipRRect(
               borderRadius: BorderRadius.circular(17),
-              child: Image.file(
-                _proofFile!,
+              child: Image.memory(
+                _proofBytes!,
                 width: double.infinity,
                 height: 220,
                 fit: BoxFit.cover,
+                gaplessPlayback: true,
               ),
             ),
             const SizedBox(height: 10),

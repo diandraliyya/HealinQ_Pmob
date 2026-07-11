@@ -159,15 +159,73 @@ class AuthService {
     await _supabase.auth.signOut();
   }
 
-  Future<void> updatePassword(String newPassword) async {
-    final user = _supabase.auth.currentUser;
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final User? currentUser =
+        _supabase.auth.currentUser;
+
+    final String? email =
+        currentUser?.email?.trim().toLowerCase();
+
+    if (currentUser == null ||
+        email == null ||
+        email.isEmpty) {
+      throw Exception(
+        'Sesi login atau email akun tidak ditemukan.',
+      );
+    }
+
+    if (currentPassword.isEmpty) {
+      throw Exception(
+        'Password saat ini wajib diisi.',
+      );
+    }
+
+    if (newPassword.length < 6) {
+      throw Exception(
+        'Password baru minimal 6 karakter.',
+      );
+    }
+
+    if (currentPassword == newPassword) {
+      throw Exception(
+        'Password baru harus berbeda dari password lama.',
+      );
+    }
+
+    final AuthResponse verificationResponse =
+        await _supabase.auth.signInWithPassword(
+      email: email,
+      password: currentPassword,
+    );
+
+    if (verificationResponse.user == null ||
+        verificationResponse.user!.id !=
+            currentUser.id) {
+      throw Exception(
+        'Password saat ini tidak dapat diverifikasi.',
+      );
+    }
+
+    await updatePassword(newPassword);
+  }
+
+  Future<void> updatePassword(
+    String newPassword,
+  ) async {
+    final User? user =
+        _supabase.auth.currentUser;
 
     if (user == null) {
       throw Exception('User belum login.');
     }
 
     await _supabase.auth.updateUser(
-      UserAttributes(password: newPassword),
+      UserAttributes(
+        password: newPassword,
+      ),
     );
   }
 }
