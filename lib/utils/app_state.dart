@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
-
+import '../services/profile_service.dart';
 import '../models/models.dart';
+import '../services/booking_service.dart';
+import '../services/user_consultation_service.dart';
+import '../models/user_counselor_model.dart';
+import '../models/booking_model.dart';
 import '../services/journal_service.dart';
 
 class AppState extends ChangeNotifier {
@@ -11,46 +15,56 @@ class AppState extends ChangeNotifier {
 
   final JournalService _journalService = JournalService();
 
-  final List<JournalModel> _journals =
-      <JournalModel>[];
+  final BookingService _bookingService = BookingService();
+
+  final UserConsultationService _consultationService =
+      UserConsultationService();
+
+  final List<JournalModel> _journals = <JournalModel>[];
 
   bool _isLoadingJournals = false;
   bool _hasLoadedJournals = false;
   String? _journalError;
 
-  final List<ConsultationModel> _consultations =
-      <ConsultationModel>[];
+  final List<ConsultationModel> _consultations = <ConsultationModel>[];
 
-  final List<MessageModel> _messages =
-      <MessageModel>[];
+  final List<BookingModel> _homeBookings = <BookingModel>[];
+
+  final List<UserCounselorModel> _homeCounselors = <UserCounselorModel>[];
+
+  bool _loadingHomeData = false;
+
+  List<BookingModel> get homeBookings => List.unmodifiable(_homeBookings);
+
+  List<UserCounselorModel> get homeCounselors =>
+      List.unmodifiable(_homeCounselors);
+
+  bool get loadingHomeData => _loadingHomeData;
+
+  final List<MessageModel> _messages = <MessageModel>[];
+
+  final ProfileService _profileService = ProfileService();
 
   int _selectedNavIndex = 0;
 
   AuthSession? get currentSession => _currentSession;
   UserModel? get currentUser => _currentUser;
   AdminModel? get currentAdmin => _currentAdmin;
-  CounselorModel? get currentCounselor =>
-      _currentCounselor;
+  CounselorModel? get currentCounselor => _currentCounselor;
 
-  List<JournalModel> get journals =>
-      List<JournalModel>.unmodifiable(_journals);
+  List<JournalModel> get journals => List<JournalModel>.unmodifiable(_journals);
   bool get isLoadingJournals => _isLoadingJournals;
   bool get hasLoadedJournals => _hasLoadedJournals;
   String? get journalError => _journalError;
-  List<ConsultationModel> get consultations =>
-      _consultations;
+  List<ConsultationModel> get consultations => _consultations;
   List<MessageModel> get messages => _messages;
 
   int get selectedNavIndex => _selectedNavIndex;
 
   bool get isLoggedIn => _currentSession != null;
-  bool get isUser =>
-      _currentSession?.accountType == AccountType.user;
-  bool get isAdmin =>
-      _currentSession?.accountType == AccountType.admin;
-  bool get isCounselor =>
-      _currentSession?.accountType ==
-      AccountType.counselor;
+  bool get isUser => _currentSession?.accountType == AccountType.user;
+  bool get isAdmin => _currentSession?.accountType == AccountType.admin;
+  bool get isCounselor => _currentSession?.accountType == AccountType.counselor;
 
   void _resetJournalCache() {
     _journals.clear();
@@ -68,8 +82,7 @@ class AppState extends ChangeNotifier {
     String emailOrUsername,
     String password,
   ) {
-    final String input =
-        emailOrUsername.trim().toLowerCase();
+    final String input = emailOrUsername.trim().toLowerCase();
 
     if (input.isEmpty || password.isEmpty) {
       return false;
@@ -77,8 +90,7 @@ class AppState extends ChangeNotifier {
 
     _resetJournalCache();
 
-    if ((input == 'admin' ||
-            input == 'admin@healinq.com') &&
+    if ((input == 'admin' || input == 'admin@healinq.com') &&
         password == 'admin123') {
       final AdminModel admin = AdminModel(
         id: 1,
@@ -103,11 +115,9 @@ class AppState extends ChangeNotifier {
       return true;
     }
 
-    if ((input == 'counselor' ||
-            input == 'counselor@healinq.com') &&
+    if ((input == 'counselor' || input == 'counselor@healinq.com') &&
         password == 'counselor123') {
-      final CounselorModel counselor =
-          CounselorModel(
+      final CounselorModel counselor = CounselorModel(
         id: 999,
         username: 'counselor',
         name: 'Dr. Counselor HealinQ',
@@ -213,20 +223,22 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  void updateProfile({
+  Future<void> updateProfile({
     required String username,
     required String name,
     required String email,
-  }) {
+  }) async {
     if (_currentUser == null || !isUser) {
       return;
     }
 
-    _currentUser = _currentUser!.copyWith(
-      username: username.trim(),
-      name: name.trim(),
-      email: email.trim(),
+    final updated = await _profileService.updateProfile(
+      username: username,
+      fullName: name,
+      email: email,
     );
+
+    _currentUser = UserModel.fromProfile(updated);
 
     _currentSession = AuthSession(
       id: _currentUser!.id,
@@ -258,6 +270,36 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
+  Future<void> loadHomeData() async {
+    if (!isUser) return;
+
+    try {
+      _loadingHomeData = true;
+      notifyListeners();
+
+      final bookings = await _bookingService.getMyBookings();
+
+      print("BOOKINGS HOME : ${bookings.length}");
+
+      final counselors = await _consultationService.getCounselors(
+        offline: false,
+      );
+
+      print("COUNSELOR HOME : ${counselors.length}");
+
+      _homeBookings
+        ..clear()
+        ..addAll(bookings);
+
+      _homeCounselors
+        ..clear()
+        ..addAll(counselors);
+    } finally {
+      _loadingHomeData = false;
+      notifyListeners();
+    }
+  }
+
   void logout() {
     _currentSession = null;
     _currentUser = null;
@@ -280,8 +322,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final List<JournalModel> result =
-          await _journalService.getMyJournals();
+      final List<JournalModel> result = await _journalService.getMyJournals();
 
       _journals
         ..clear()
@@ -302,8 +343,7 @@ class AppState extends ChangeNotifier {
     required String content,
     required String moodTag,
   }) async {
-    final JournalModel journal =
-        await _journalService.createJournal(
+    final JournalModel journal = await _journalService.createJournal(
       title: title,
       content: content,
       moodTag: moodTag,
@@ -326,8 +366,7 @@ class AppState extends ChangeNotifier {
     required String content,
     required String moodTag,
   }) async {
-    final JournalModel journal =
-        await _journalService.updateJournal(
+    final JournalModel journal = await _journalService.updateJournal(
       journalId: journalId,
       title: title,
       content: content,
@@ -368,10 +407,7 @@ class AppState extends ChangeNotifier {
   }
 
   String _cleanJournalError(Object error) {
-    return error
-        .toString()
-        .replaceFirst('Exception: ', '')
-        .trim();
+    return error.toString().replaceFirst('Exception: ', '').trim();
   }
 
   void addConsultation(
@@ -386,46 +422,38 @@ class AppState extends ChangeNotifier {
     String status,
   ) {
     final int index = _consultations.indexWhere(
-      (ConsultationModel item) =>
-          item.id == consultationId,
+      (ConsultationModel item) => item.id == consultationId,
     );
 
     if (index == -1) return;
 
-    _consultations[index] =
-        _consultations[index].copyWith(
+    _consultations[index] = _consultations[index].copyWith(
       status: status,
     );
 
     notifyListeners();
   }
 
-  List<ConsultationModel>
-      getOnlineConsultations() {
+  List<ConsultationModel> getOnlineConsultations() {
     return _consultations.where(
       (ConsultationModel consultation) {
-        return consultation.type.toLowerCase() ==
-            'online';
+        return consultation.type.toLowerCase() == 'online';
       },
     ).toList();
   }
 
-  List<ConsultationModel>
-      getOfflineConsultations() {
+  List<ConsultationModel> getOfflineConsultations() {
     return _consultations.where(
       (ConsultationModel consultation) {
-        return consultation.type.toLowerCase() ==
-            'offline';
+        return consultation.type.toLowerCase() == 'offline';
       },
     ).toList();
   }
 
-  List<ConsultationModel>
-      getConfirmedOnlineConsultations() {
+  List<ConsultationModel> getConfirmedOnlineConsultations() {
     return _consultations.where(
       (ConsultationModel consultation) {
-        return consultation.type.toLowerCase() ==
-                'online' &&
+        return consultation.type.toLowerCase() == 'online' &&
             consultation.status == 'Confirmed';
       },
     ).toList();
@@ -436,8 +464,7 @@ class AppState extends ChangeNotifier {
   ) {
     try {
       return _consultations.firstWhere(
-        (ConsultationModel consultation) =>
-            consultation.id == id,
+        (ConsultationModel consultation) => consultation.id == id,
       );
     } catch (_) {
       return null;
@@ -454,16 +481,34 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  final List<String> _adminActivities =
-      <String>[
+  final List<String> _adminActivities = <String>[
     'Admin login berhasil',
   ];
 
-  List<String> get adminActivities =>
-      _adminActivities;
+  List<String> get adminActivities => _adminActivities;
 
   void addAdminActivity(String activity) {
     _adminActivities.add(activity);
+    notifyListeners();
+  }
+
+  void setUserFromProfile(
+    Map<String, dynamic> profile,
+  ) {
+    final user = UserModel.fromProfile(profile);
+
+    _currentUser = user;
+
+    _currentAdmin = null;
+    _currentCounselor = null;
+
+    _currentSession = AuthSession(
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      accountType: AccountType.user,
+    );
+
     notifyListeners();
   }
 }
