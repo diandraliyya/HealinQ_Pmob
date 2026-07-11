@@ -843,281 +843,56 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
     JournalModel? journal,
   }) async {
     final bool isEditing = journal != null;
-    final TextEditingController titleCtrl = TextEditingController(
-      text: journal?.title ?? '',
-    );
-    final TextEditingController contentCtrl = TextEditingController(
-      text: journal?.content ?? '',
-    );
 
-    String selectedMood = journal?.moodTag ?? '😊';
-    bool isSaving = false;
-
-    const List<String> moods = <String>[
-      '😊', '😔', '😢', '😡', '😌', '🥰', '😰', '😴',
-    ];
-
-    await showModalBottomSheet<void>(
+    final bool? saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext sheetContext) {
-        return StatefulBuilder(
-          builder: (
-            BuildContext context,
-            void Function(void Function()) setModalState,
-          ) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.88,
-              decoration: const BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-              ),
-              padding: EdgeInsets.only(
-                left: 24,
-                right: 24,
-                top: 24,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    isEditing
-                        ? 'Edit Journal Entry'
-                        : 'New Journal Entry',
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    isEditing
-                        ? 'Perbarui catatan dan perasaanmu.'
-                        : 'Write whatever you feel today.',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: AppColors.textMedium,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'How are you feeling?',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: moods.map((String mood) {
-                      final bool isSelected = selectedMood == mood;
-
-                      return GestureDetector(
-                        onTap: isSaving
-                            ? null
-                            : () {
-                                setModalState(() {
-                                  selectedMood = mood;
-                                });
-                              },
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppColors.primarySoft
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isSelected
-                                  ? AppColors.primary
-                                  : Colors.grey.shade300,
-                            ),
-                          ),
-                          child: Text(
-                            mood,
-                            style: const TextStyle(fontSize: 22),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: titleCtrl,
-                    enabled: !isSaving,
-                    maxLength: 120,
-                    decoration: InputDecoration(
-                      hintText: 'Title (optional)',
-                      hintStyle: GoogleFonts.poppins(
-                        color: AppColors.textLight,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      contentPadding: const EdgeInsets.all(12),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: contentCtrl,
-                      enabled: !isSaving,
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                      decoration: InputDecoration(
-                        hintText: 'Write your thoughts here...',
-                        hintStyle: GoogleFonts.poppins(
-                          color: AppColors.textLight,
-                          fontSize: 13,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        contentPadding: const EdgeInsets.all(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: isSaving
-                              ? null
-                              : () {
-                                  Navigator.of(sheetContext).pop();
-                                },
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 14,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                          ),
-                          child: const Text('Cancel'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: isSaving
-                              ? null
-                              : () async {
-                                  if (contentCtrl.text.trim().isEmpty) {
-                                    _showMessage(
-                                      'Isi note dulu ya.',
-                                      isError: true,
-                                    );
-                                    return;
-                                  }
-
-                                  setModalState(() {
-                                    isSaving = true;
-                                  });
-
-                                  try {
-                                    if (isEditing) {
-                                      await this
-                                          .context
-                                          .read<AppState>()
-                                          .updateJournal(
-                                            journalId: journal!.id,
-                                            title: titleCtrl.text,
-                                            content: contentCtrl.text,
-                                            moodTag: selectedMood,
-                                          );
-                                    } else {
-                                      await this
-                                          .context
-                                          .read<AppState>()
-                                          .createJournal(
-                                            title: titleCtrl.text,
-                                            content: contentCtrl.text,
-                                            moodTag: selectedMood,
-                                          );
-                                    }
-
-                                    if (!sheetContext.mounted) return;
-                                    Navigator.of(sheetContext).pop();
-
-                                    _showMessage(
-                                      isEditing
-                                          ? 'Journal berhasil diperbarui.'
-                                          : 'Journal berhasil disimpan.',
-                                      isError: false,
-                                    );
-                                  } catch (error) {
-                                    if (!mounted) return;
-
-                                    _showMessage(
-                                      _cleanError(error),
-                                      isError: true,
-                                    );
-
-                                    if (sheetContext.mounted) {
-                                      setModalState(() {
-                                        isSaving = false;
-                                      });
-                                    }
-                                  }
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: AppColors.white,
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 14,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                          ),
-                          child: isSaving
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.white,
-                                  ),
-                                )
-                              : Text(
-                                  isEditing
-                                      ? 'Save Changes'
-                                      : 'Save Journal',
-                                  style: GoogleFonts.poppins(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
+        return _JournalEditorSheet(
+          journal: journal,
+          onSave: (
+            String title,
+            String content,
+            String moodTag,
+          ) async {
+            if (journal != null) {
+              await context.read<AppState>().updateJournal(
+                    journalId: journal.id,
+                    title: title,
+                    content: content,
+                    moodTag: moodTag,
+                  );
+            } else {
+              await context.read<AppState>().createJournal(
+                    title: title,
+                    content: content,
+                    moodTag: moodTag,
+                  );
+            }
           },
         );
       },
     );
 
-    titleCtrl.dispose();
-    contentCtrl.dispose();
+    if (!mounted || saved != true) {
+      return;
+    }
+
+    _showMessage(
+      isEditing
+          ? 'Journal berhasil diperbarui.'
+          : 'Journal berhasil disimpan.',
+      isError: false,
+    );
   }
 
-  void _showJournalDetail(
+  Future<void> _showJournalDetail(
     BuildContext context,
     JournalModel journal,
-  ) {
-    showModalBottomSheet<void>(
+  ) async {
+    final _JournalDetailAction? action =
+        await showModalBottomSheet<_JournalDetailAction>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -1129,7 +904,7 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
             1;
 
         return Container(
-          height: MediaQuery.of(context).size.height * 0.78,
+          height: MediaQuery.of(sheetContext).size.height * 0.78,
           padding: const EdgeInsets.all(24),
           decoration: const BoxDecoration(
             color: AppColors.white,
@@ -1196,7 +971,8 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
                         if (wasEdited) ...<Widget>[
                           const SizedBox(height: 3),
                           Text(
-                            'Edited ${DateFormat('d MMM yyyy - HH:mm').format(journal.updatedAt)}',
+                            'Edited '
+                            '${DateFormat('d MMM yyyy - HH:mm').format(journal.updatedAt)}',
                             style: GoogleFonts.poppins(
                               fontSize: 10,
                               color: AppColors.primary,
@@ -1247,15 +1023,8 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        Navigator.of(sheetContext).pop();
-
-                        Future<void>.delayed(
-                          Duration.zero,
-                          () {
-                            if (mounted) {
-                              _showJournalEditor(journal: journal);
-                            }
-                          },
+                        Navigator.of(sheetContext).pop(
+                          _JournalDetailAction.edit,
                         );
                       },
                       icon: const Icon(Icons.edit_rounded),
@@ -1266,15 +1035,8 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        Navigator.of(sheetContext).pop();
-
-                        Future<void>.delayed(
-                          Duration.zero,
-                          () {
-                            if (mounted) {
-                              _confirmDeleteJournal(journal);
-                            }
-                          },
+                        Navigator.of(sheetContext).pop(
+                          _JournalDetailAction.delete,
                         );
                       },
                       icon: const Icon(
@@ -1283,7 +1045,9 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
                       ),
                       label: const Text(
                         'Delete',
-                        style: TextStyle(color: AppColors.error),
+                        style: TextStyle(
+                          color: AppColors.error,
+                        ),
                       ),
                     ),
                   ),
@@ -1299,7 +1063,9 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: AppColors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(24),
                     ),
@@ -1312,6 +1078,19 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
         );
       },
     );
+
+    if (!mounted || action == null) {
+      return;
+    }
+
+    switch (action) {
+      case _JournalDetailAction.edit:
+        await _showJournalEditor(journal: journal);
+        break;
+      case _JournalDetailAction.delete:
+        await _confirmDeleteJournal(journal);
+        break;
+    }
   }
 
   Future<void> _confirmDeleteJournal(
@@ -1408,3 +1187,343 @@ class _SelfHealingScreenState extends State<SelfHealingScreen> {
         .trim();
   }
 }
+
+enum _JournalDetailAction {
+  edit,
+  delete,
+}
+
+class _JournalEditorSheet extends StatefulWidget {
+  final JournalModel? journal;
+
+  final Future<void> Function(
+    String title,
+    String content,
+    String moodTag,
+  ) onSave;
+
+  const _JournalEditorSheet({
+    required this.onSave,
+    this.journal,
+  });
+
+  @override
+  State<_JournalEditorSheet> createState() =>
+      _JournalEditorSheetState();
+}
+
+class _JournalEditorSheetState
+    extends State<_JournalEditorSheet> {
+  static const List<String> _moods = <String>[
+    '😊',
+    '😔',
+    '😢',
+    '😡',
+    '😌',
+    '🥰',
+    '😰',
+    '😴',
+  ];
+
+  late final TextEditingController _titleController;
+  late final TextEditingController _contentController;
+
+  late String _selectedMood;
+  bool _isSaving = false;
+
+  bool get _isEditing => widget.journal != null;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _titleController = TextEditingController(
+      text: widget.journal?.title ?? '',
+    );
+
+    _contentController = TextEditingController(
+      text: widget.journal?.content ?? '',
+    );
+
+    _selectedMood =
+        widget.journal?.moodTag ?? '😊';
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _contentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    FocusScope.of(context).unfocus();
+
+    if (_isSaving) {
+      return;
+    }
+
+    final String content =
+        _contentController.text.trim();
+
+    if (content.isEmpty) {
+      _showError('Isi note dulu ya.');
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await widget.onSave(
+        _titleController.text.trim(),
+        content,
+        _selectedMood,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showError(
+        error
+            .toString()
+            .replaceFirst('Exception: ', '')
+            .trim(),
+      );
+
+      setState(() {
+        _isSaving = false;
+      });
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height:
+          MediaQuery.of(context).size.height * 0.88,
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(24),
+        ),
+      ),
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom:
+            MediaQuery.of(context).viewInsets.bottom +
+                24,
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              _isEditing
+                  ? 'Edit Journal Entry'
+                  : 'New Journal Entry',
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _isEditing
+                  ? 'Perbarui catatan dan perasaanmu.'
+                  : 'Write whatever you feel today.',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: AppColors.textMedium,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'How are you feeling?',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _moods.map(
+                (String mood) {
+                  final bool isSelected =
+                      _selectedMood == mood;
+
+                  return GestureDetector(
+                    onTap: _isSaving
+                        ? null
+                        : () {
+                            setState(() {
+                              _selectedMood = mood;
+                            });
+                          },
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primarySoft
+                            : Colors.transparent,
+                        borderRadius:
+                            BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.primary
+                              : Colors.grey.shade300,
+                        ),
+                      ),
+                      child: Text(
+                        mood,
+                        style: const TextStyle(
+                          fontSize: 22,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ).toList(),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _titleController,
+              enabled: !_isSaving,
+              maxLength: 120,
+              decoration: InputDecoration(
+                hintText: 'Title (optional)',
+                hintStyle: GoogleFonts.poppins(
+                  color: AppColors.textLight,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius:
+                      BorderRadius.circular(12),
+                ),
+                contentPadding:
+                    const EdgeInsets.all(12),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: TextField(
+                controller: _contentController,
+                enabled: !_isSaving,
+                maxLines: null,
+                expands: true,
+                textAlignVertical:
+                    TextAlignVertical.top,
+                decoration: InputDecoration(
+                  hintText:
+                      'Write your thoughts here...',
+                  hintStyle: GoogleFonts.poppins(
+                    color: AppColors.textLight,
+                    fontSize: 13,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(12),
+                  ),
+                  contentPadding:
+                      const EdgeInsets.all(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isSaving
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                          },
+                    style: OutlinedButton.styleFrom(
+                      padding:
+                          const EdgeInsets.symmetric(
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(24),
+                      ),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed:
+                        _isSaving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          AppColors.primary,
+                      foregroundColor:
+                          AppColors.white,
+                      padding:
+                          const EdgeInsets.symmetric(
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(24),
+                      ),
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.white,
+                            ),
+                          )
+                        : Text(
+                            _isEditing
+                                ? 'Save Changes'
+                                : 'Save Journal',
+                            style: GoogleFonts.poppins(
+                              fontWeight:
+                                  FontWeight.w700,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
